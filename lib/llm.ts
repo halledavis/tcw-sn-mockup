@@ -37,13 +37,24 @@ function safeJson<T>(raw: string): T | null {
   return null;
 }
 
-async function jsonChat(system: string, user: string, maxTokens: number): Promise<string> {
+// Use OpenAI Structured Outputs (json_schema + strict) so required fields are
+// always present — json_object mode alone does not enforce shape, and smaller
+// models will happily drop "recommendations".
+type SchemaSpec = { name: string; schema: Record<string, unknown> };
+
+async function jsonChat(
+  system: string,
+  user: string,
+  maxTokens: number,
+  schema: SchemaSpec,
+): Promise<string> {
   const resp = await client().chat.completions.create({
     model: MODEL(),
     max_tokens: maxTokens,
-    // JSON mode — requires the word "json" in the prompt (the system prompts
-    // below say "RAW JSON only").
-    response_format: { type: "json_object" },
+    response_format: {
+      type: "json_schema",
+      json_schema: { name: schema.name, strict: true, schema: schema.schema },
+    },
     messages: [
       { role: "system", content: system },
       { role: "user", content: user },
@@ -51,6 +62,56 @@ async function jsonChat(system: string, user: string, maxTokens: number): Promis
   });
   return resp.choices[0]?.message?.content ?? "";
 }
+
+// Either ask a question or finish. Both fields required (strict mode); done
+// wins, and a null next_question also ends the interview.
+const INTERVIEW_SCHEMA: SchemaSpec = {
+  name: "interview_step",
+  schema: {
+    type: "object",
+    properties: {
+      done: { type: "boolean" },
+      next_question: { type: ["string", "null"] },
+    },
+    required: ["done", "next_question"],
+    additionalProperties: false,
+  },
+};
+
+const SYNTH_SCHEMA: SchemaSpec = {
+  name: "synthesis",
+  schema: {
+    type: "object",
+    properties: {
+      inferred_signals: {
+        type: "object",
+        properties: {
+          sourcing_model: { type: ["string", "null"] },
+          worker_type: { type: ["string", "null"] },
+          geography: { type: ["string", "null"] },
+          needs_employer: { type: ["string", "null"] },
+          project_vs_staff: { type: ["string", "null"] },
+        },
+        required: ["sourcing_model", "worker_type", "geography", "needs_employer", "project_vs_staff"],
+        additionalProperties: false,
+      },
+      recommendations: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            service_code: { type: "string", enum: [...SERVICE_CODES] },
+            reason: { type: "string" },
+          },
+          required: ["service_code", "reason"],
+          additionalProperties: false,
+        },
+      },
+    },
+    required: ["inferred_signals", "recommendations"],
+    additionalProperties: false,
+  },
+};
 
 function personaStance(persona: Persona): string {
   return persona === "cra"
@@ -86,10 +147,11 @@ export async function runInterviewer(
   ].join("\n\n");
 
   try {
-    const parsed = safeJson<InterviewStep>(await jsonChat(system, transcriptToText(brief, transcript), 600));
+    const raw = await jsonChat(system, transcriptToText(brief, transcript), 600, INTERVIEW_SCHEMA);
+    const parsed = safeJson<{ done?: boolean; next_question?: string | null }>(raw);
     if (!parsed) return { done: true };
-    if ("done" in parsed && parsed.done) return { done: true };
-    if ("next_question" in parsed && typeof parsed.next_question === "string") {
+    if (parsed.done) return { done: true };
+    if (typeof parsed.next_question === "string" && parsed.next_question.trim()) {
       return { next_question: parsed.next_question };
     }
     return { done: true };
@@ -120,7 +182,7 @@ export async function runSynthesizer(
 
   let parsed: SynthesisResult | null = null;
   try {
-    parsed = safeJson<SynthesisResult>(await jsonChat(system, transcriptToText(brief, transcript), 1500));
+    parsed = safeJson<SynthesisResult>(await jsonChat(system, transcriptToText(brief, transcript), 1500, SYNTH_SCHEMA));
   } catch (e) {
     console.error("runSynthesizer failed:", e);
   }
