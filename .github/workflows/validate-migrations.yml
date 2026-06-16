@@ -1,0 +1,39 @@
+name: Validate Supabase Migrations
+
+# Runs on every PR that touches migrations. Spins up a throwaway local
+# Supabase stack, applies all committed migrations to it, and lints the
+# schema. This validates migrations WITHOUT touching the production project
+# or needing any secret — it's the gate before a merge to main triggers the
+# real `supabase db push` in deploy-migrations.yml.
+
+on:
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "supabase/migrations/**"
+      - "supabase/config.toml"
+      - ".github/workflows/validate-migrations.yml"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Start local Supabase stack (applies migrations to a fresh DB)
+        run: supabase start
+
+      - name: Lint schema
+        run: supabase db lint --level warning
+
+      - name: Stop local stack
+        if: always()
+        run: supabase stop --no-backup
