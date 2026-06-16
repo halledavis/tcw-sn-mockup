@@ -1,5 +1,5 @@
 import "server-only";
-import Anthropic from "@anthropic-ai/sdk";
+import OpenAI from "openai";
 import {
   catalogContext,
   SIGNAL_DEFINITIONS,
@@ -11,23 +11,17 @@ import {
 } from "./catalog";
 
 function client() {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) throw new Error("Missing ANTHROPIC_API_KEY (server-only).");
-  return new Anthropic({ apiKey });
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) throw new Error("Missing OPENAI_API_KEY (server-only).");
+  return new OpenAI({ apiKey });
 }
 
-const MODEL = () => process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6";
+const MODEL = () => process.env.OPENAI_MODEL || "gpt-4o-mini";
 
 const QUESTION_CAP = 6;
 
-// Pull the first text block out of a response.
-function firstText(msg: Anthropic.Message): string {
-  for (const block of msg.content) if (block.type === "text") return block.text;
-  return "";
-}
-
-// Models are told to return raw JSON. Parse safely: try the whole string, then
-// salvage the first {...} object if the model wrapped it in prose.
+// Models are told to return raw JSON (and we use JSON mode). Parse safely: try
+// the whole string, then salvage the first {...} object if needed.
 function safeJson<T>(raw: string): T | null {
   const attempts = [raw.trim()];
   const start = raw.indexOf("{");
@@ -41,6 +35,21 @@ function safeJson<T>(raw: string): T | null {
     }
   }
   return null;
+}
+
+async function jsonChat(system: string, user: string, maxTokens: number): Promise<string> {
+  const resp = await client().chat.completions.create({
+    model: MODEL(),
+    max_tokens: maxTokens,
+    // JSON mode — requires the word "json" in the prompt (the system prompts
+    // below say "RAW JSON only").
+    response_format: { type: "json_object" },
+    messages: [
+      { role: "system", content: system },
+      { role: "user", content: user },
+    ],
+  });
+  return resp.choices[0]?.message?.content ?? "";
 }
 
 function personaStance(persona: Persona): string {
@@ -63,7 +72,6 @@ export async function runInterviewer(
   brief: string,
   transcript: TranscriptTurn[],
 ): Promise<InterviewStep> {
-  // Hard stop so the flow always terminates.
   const answered = transcript.filter((t) => t.role === "user").length;
   if (answered >= QUESTION_CAP) return { done: true };
 
@@ -77,20 +85,18 @@ export async function runInterviewer(
     'Respond with RAW JSON only — no prose, no markdown. Either {"next_question": "..."} to ask, or {"done": true} when you have enough to recommend services.',
   ].join("\n\n");
 
-  const msg = await client().messages.create({
-    model: MODEL(),
-    max_tokens: 600,
-    system,
-    messages: [{ role: "user", content: transcriptToText(brief, transcript) }],
-  });
-
-  const parsed = safeJson<InterviewStep>(firstText(msg));
-  if (!parsed) return { done: true }; // fail safe: terminate rather than loop
-  if ("done" in parsed && parsed.done) return { done: true };
-  if ("next_question" in parsed && typeof parsed.next_question === "string") {
-    return { next_question: parsed.next_question };
+  try {
+    const parsed = safeJson<InterviewStep>(await jsonChat(system, transcriptToText(brief, transcript), 600));
+    if (!parsed) return { done: true };
+    if ("done" in parsed && parsed.done) return { done: true };
+    if ("next_question" in parsed && typeof parsed.next_question === "string") {
+      return { next_question: parsed.next_question };
+    }
+    return { done: true };
+  } catch (e) {
+    console.error("runInterviewer failed:", e);
+    return { done: true };
   }
-  return { done: true };
 }
 
 // 2) Synthesizer — full transcript -> signals + recommendations with reasons.
@@ -112,14 +118,13 @@ export async function runSynthesizer(
     'Respond with RAW JSON only — no prose, no markdown — shaped as: {"inferred_signals": { ... }, "recommendations": [ {"service_code": "...", "reason": "..."} ]}',
   ].join("\n\n");
 
-  const msg = await client().messages.create({
-    model: MODEL(),
-    max_tokens: 1500,
-    system,
-    messages: [{ role: "user", content: transcriptToText(brief, transcript) }],
-  });
+  let parsed: SynthesisResult | null = null;
+  try {
+    parsed = safeJson<SynthesisResult>(await jsonChat(system, transcriptToText(brief, transcript), 1500));
+  } catch (e) {
+    console.error("runSynthesizer failed:", e);
+  }
 
-  const parsed = safeJson<SynthesisResult>(firstText(msg));
   const valid = new Set<string>(SERVICE_CODES);
   const recommendations: Recommendation[] = (parsed?.recommendations ?? [])
     .filter((r) => r && valid.has(r.service_code))

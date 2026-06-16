@@ -17,8 +17,8 @@ npm run dev                         # http://localhost:3000/clients/new
 |---|---|
 | `NEXT_PUBLIC_SUPABASE_URL` | `https://dsvtqjnjdxvvjvrgvgep.supabase.co` (already in the example) |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase dashboard → Project Settings → API (server-only) |
-| `ANTHROPIC_API_KEY` | Anthropic console (server-only — never sent to the browser) |
-| `ANTHROPIC_MODEL` | e.g. `claude-sonnet-4-6` |
+| `OPENAI_API_KEY` | OpenAI dashboard (server-only — never sent to the browser) |
+| `OPENAI_MODEL` | e.g. `gpt-4o-mini` |
 
 ## The intake flow (`/clients/new`)
 
@@ -42,11 +42,12 @@ You land on a summary at `/clients/{id}`. Wizard state is held client-side and
 
 ## AI is server-side only
 
-`lib/anthropic.ts` is marked `import "server-only"` and called only from server
-actions; `ANTHROPIC_API_KEY` never reaches the client. Model id comes from
-`ANTHROPIC_MODEL`. The service catalog + two-level module map + signal
-definitions are embedded in the system prompts so output is grounded; the
-synthesizer is constrained to the six seeded service codes and parsed safely.
+`lib/llm.ts` (OpenAI) is marked `import "server-only"` and called only from
+server actions; `OPENAI_API_KEY` never reaches the client. Model id comes from
+`OPENAI_MODEL`. Uses OpenAI JSON mode (`response_format: json_object`). The
+service catalog + two-level module map + signal definitions are embedded in the
+system prompts so output is grounded; the synthesizer is constrained to the six
+seeded service codes and parsed safely.
 
 ## Schema
 

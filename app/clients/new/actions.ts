@@ -1,7 +1,7 @@
 "use server";
 
 import { z } from "zod";
-import { runInterviewer, runSynthesizer, type InterviewStep } from "@/lib/anthropic";
+import { runInterviewer, runSynthesizer, type InterviewStep } from "@/lib/llm";
 import { supabaseAdmin } from "@/lib/supabaseServer";
 import { SERVICE_CODES, type SynthesisResult } from "@/lib/catalog";
 import type { Json } from "@/lib/database.types";
