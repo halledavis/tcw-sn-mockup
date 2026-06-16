@@ -1,0 +1,131 @@
+import "server-only";
+import Anthropic from "@anthropic-ai/sdk";
+import {
+  catalogContext,
+  SIGNAL_DEFINITIONS,
+  SERVICE_CODES,
+  type Persona,
+  type TranscriptTurn,
+  type SynthesisResult,
+  type Recommendation,
+} from "./catalog";
+
+function client() {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) throw new Error("Missing ANTHROPIC_API_KEY (server-only).");
+  return new Anthropic({ apiKey });
+}
+
+const MODEL = () => process.env.ANTHROPIC_MODEL || "claude-sonnet-4-6";
+
+const QUESTION_CAP = 6;
+
+// Pull the first text block out of a response.
+function firstText(msg: Anthropic.Message): string {
+  for (const block of msg.content) if (block.type === "text") return block.text;
+  return "";
+}
+
+// Models are told to return raw JSON. Parse safely: try the whole string, then
+// salvage the first {...} object if the model wrapped it in prose.
+function safeJson<T>(raw: string): T | null {
+  const attempts = [raw.trim()];
+  const start = raw.indexOf("{");
+  const end = raw.lastIndexOf("}");
+  if (start !== -1 && end > start) attempts.push(raw.slice(start, end + 1));
+  for (const a of attempts) {
+    try {
+      return JSON.parse(a) as T;
+    } catch {
+      /* try next */
+    }
+  }
+  return null;
+}
+
+function personaStance(persona: Persona): string {
+  return persona === "cra"
+    ? "The respondent is an internal Client Relationship Associate (CRA). Be terse and assume competence — they know the staffing domain and our terminology. Ask sharp, efficient questions."
+    : "The respondent is a prospect off the street who may not know staffing jargon. Educate briefly where helpful, avoid internal acronyms, and probe a little more to draw out what they actually need.";
+}
+
+function transcriptToText(brief: string, transcript: TranscriptTurn[]): string {
+  const lines = [`INITIAL BRIEF: ${brief || "(none provided)"}`];
+  for (const t of transcript) lines.push(`${t.role === "ai" ? "Q (you)" : "A (them)"}: ${t.content}`);
+  return lines.join("\n");
+}
+
+export type InterviewStep = { next_question: string } | { done: true };
+
+// 1) Interviewer — picks the next best question, or signals done.
+export async function runInterviewer(
+  persona: Persona,
+  brief: string,
+  transcript: TranscriptTurn[],
+): Promise<InterviewStep> {
+  // Hard stop so the flow always terminates.
+  const answered = transcript.filter((t) => t.role === "user").length;
+  if (answered >= QUESTION_CAP) return { done: true };
+
+  const system = [
+    "You are an intake interviewer for StaffingNation, an HR/staffing solution engine.",
+    "Your job: ask the FEWEST questions needed to map this client to the right services, then stop.",
+    personaStance(persona),
+    catalogContext(),
+    SIGNAL_DEFINITIONS,
+    `Ask ONE open, adaptive question at a time — pick the single most valuable next question given what you already know. Do not re-ask what's already answered. Stop as soon as you can confidently map them to one or more services. Soft cap: about ${QUESTION_CAP} questions total; you have asked ${answered} so far.`,
+    'Respond with RAW JSON only — no prose, no markdown. Either {"next_question": "..."} to ask, or {"done": true} when you have enough to recommend services.',
+  ].join("\n\n");
+
+  const msg = await client().messages.create({
+    model: MODEL(),
+    max_tokens: 600,
+    system,
+    messages: [{ role: "user", content: transcriptToText(brief, transcript) }],
+  });
+
+  const parsed = safeJson<InterviewStep>(firstText(msg));
+  if (!parsed) return { done: true }; // fail safe: terminate rather than loop
+  if ("done" in parsed && parsed.done) return { done: true };
+  if ("next_question" in parsed && typeof parsed.next_question === "string") {
+    return { next_question: parsed.next_question };
+  }
+  return { done: true };
+}
+
+// 2) Synthesizer — full transcript -> signals + recommendations with reasons.
+export async function runSynthesizer(
+  persona: Persona,
+  brief: string,
+  transcript: TranscriptTurn[],
+): Promise<SynthesisResult> {
+  const system = [
+    "You are the synthesizer for StaffingNation client intake.",
+    "Read the full intake transcript and recommend which commercial services fit.",
+    catalogContext(),
+    SIGNAL_DEFINITIONS,
+    `Rules:
+- Only recommend services using these exact codes: ${SERVICE_CODES.join(", ")}. Never invent a service.
+- Recommend the smallest set that genuinely fits what they said. Multiple is fine; zero is fine if nothing fits.
+- Each recommendation includes a plain-language "reason" tied to what THEY said. Explain WHY. No confidence scores.
+- Also return "inferred_signals": an object capturing the signal areas (sourcing_model, worker_type, geography, needs_employer, project_vs_staff) with short values; use null when unknown.`,
+    'Respond with RAW JSON only — no prose, no markdown — shaped as: {"inferred_signals": { ... }, "recommendations": [ {"service_code": "...", "reason": "..."} ]}',
+  ].join("\n\n");
+
+  const msg = await client().messages.create({
+    model: MODEL(),
+    max_tokens: 1500,
+    system,
+    messages: [{ role: "user", content: transcriptToText(brief, transcript) }],
+  });
+
+  const parsed = safeJson<SynthesisResult>(firstText(msg));
+  const valid = new Set<string>(SERVICE_CODES);
+  const recommendations: Recommendation[] = (parsed?.recommendations ?? [])
+    .filter((r) => r && valid.has(r.service_code))
+    .map((r) => ({ service_code: r.service_code, reason: String(r.reason ?? "") }));
+  return {
+    inferred_signals: parsed?.inferred_signals ?? {},
+    recommendations,
+  };
+}
