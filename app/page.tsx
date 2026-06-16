@@ -6,15 +6,15 @@ export default function Home() {
       <div className="mock-banner">Internal · Mockup only</div>
       <div className="wrap">
         <h1>StaffingNation</h1>
-        <p className="muted">Dev mockup.</p>
+        <p className="muted">Internal Product Mockups</p>
         <div className="panel">
-          <h2>AI-driven client intake</h2>
+          <h2>AI-Driven Client Intake</h2>
           <p className="muted small">
-            Persona → brief → adaptive AI questions → recommended services → human confirm.
+            Persona → Brief → Adaptive AI Questions → Recommended Services → Human Confirm → Create Client → Client Profile Details → Scopes
           </p>
           <Link href="/clients/new">
             <button className="primary" style={{ marginTop: 8 }}>
-              Create new client →
+              See The Flow →
             </button>
           </Link>
         </div>
