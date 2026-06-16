@@ -1,0 +1,26 @@
+# --- Secrets / credentials (NEVER commit) ---
+.env
+.env.*
+!.env.example
+*.env
+supabase.env
+.supabase.env
+secrets.*
+*.pem
+*.key
+
+# --- Supabase local temp state ---
+supabase/.branches
+supabase/.temp
+supabase/.env
+
+# --- OS / editor cruft ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# --- Node (if added later) ---
+node_modules/
+npm-debug.log*

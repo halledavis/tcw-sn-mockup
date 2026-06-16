@@ -1,0 +1,41 @@
+name: Deploy Supabase Migrations
+
+# Applies committed migrations in supabase/migrations to the production
+# project whenever they change on main. Auth + DB password come from repo
+# secrets only — never inline a token or password here.
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "supabase/migrations/**"
+      - "supabase/config.toml"
+      - ".github/workflows/deploy-migrations.yml"
+  workflow_dispatch: {}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      # Project ref is public (it's in your project URL), so it is inlined
+      # rather than stored as a secret. Change here if you ever re-point this.
+      SUPABASE_PROJECT_REF: dsvtqjnjdxvvjvrgvgep
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Link to Supabase project
+        run: supabase link --project-ref "$SUPABASE_PROJECT_REF"
+
+      - name: Push migrations
+        run: supabase db push
