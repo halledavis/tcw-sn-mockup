@@ -1096,9 +1096,48 @@ export type Database = {
         }
         Returns: string
       }
+      derive_bill_cards: {
+        Args: { p_entity_id: string }
+        Returns: {
+          created_at: string
+          entity_id: string
+          id: string
+          markup_pct: number | null
+          risk_tier_id: string
+          states: Json
+          status: Database["public"]["Enums"]["bill_card_status"]
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "bill_card"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       enable_globalized_compliance: {
         Args: { p_entity_id: string }
         Returns: undefined
+      }
+      save_job_titles: {
+        Args: { p_entity_id: string; p_titles: Json }
+        Returns: {
+          ai_rationale: string | null
+          blurb: string | null
+          clarifications: Json
+          created_at: string
+          entity_id: string
+          id: string
+          needs_review: boolean
+          risk_tier_id: string | null
+          status: Database["public"]["Enums"]["job_title_status"]
+          title: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "client_job_title"
+          isOneToOne: false
+          isSetofReturn: true
+        }
       }
       save_scope_and_org: {
         Args: {

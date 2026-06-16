@@ -94,6 +94,26 @@ export function subdivisionsFor(country: string): { code: string; name: string }
   return null;
 }
 
+// Risk-tier catalog (mirrors the seeded risk_tier table) — used to ground the
+// job-title categorizer. The categorizer may only return one of these codes.
+export const RISK_TIER_CODES = ["tier_0", "tier_1", "tier_2", "tier_3", "tier_4"] as const;
+export type RiskTierCode = (typeof RISK_TIER_CODES)[number];
+
+export const RISK_TIERS: { code: RiskTierCode; name: string; definition: string; default_markup_pct: number }[] = [
+  { code: "tier_0", name: "General Office / Clerical / IT", definition: "Desk/office, clerical, administrative, software/IT — no physical or safety risk.", default_markup_pct: 18 },
+  { code: "tier_1", name: "Skilled / Light Industrial", definition: "Skilled trades or light industrial — light assembly, technicians, light warehouse.", default_markup_pct: 28 },
+  { code: "tier_2", name: "Manual / Physical Labor", definition: "Sustained manual/physical labor — general labor, heavy warehouse, movers.", default_markup_pct: 38 },
+  { code: "tier_3", name: "Hazardous / High-Risk", definition: "Driving as a core duty, working at heights, heavy/dangerous equipment, hazardous materials.", default_markup_pct: 50 },
+  { code: "tier_4", name: "Regulated / Sensitive", definition: "Regulated or sensitive contexts — cash handling, working with minors, security, controlled substances.", default_markup_pct: 45 },
+];
+
+export function riskTierContext(): string {
+  return [
+    "RISK TIER CATALOG (return one of these exact codes, single risk/liability axis):",
+    ...RISK_TIERS.map((t) => `- ${t.code}: ${t.name} — ${t.definition}`),
+  ].join("\n");
+}
+
 export type Persona = "cra" | "prospect";
 
 export type TranscriptTurn = { role: "ai" | "user"; content: string };

@@ -4,6 +4,9 @@ import {
   catalogContext,
   SIGNAL_DEFINITIONS,
   SERVICE_CODES,
+  riskTierContext,
+  RISK_TIER_CODES,
+  type RiskTierCode,
   type Persona,
   type TranscriptTurn,
   type SynthesisResult,
@@ -247,5 +250,80 @@ export async function runSynthesizer(
   return {
     inferred_signals: parsed?.inferred_signals ?? {},
     recommendations,
+  };
+}
+
+// --- Page 6: job-title risk categorization ---------------------------------
+export type Clarification = { question: string; answer: string };
+export type CategorizeResult =
+  | { clarifying_question: string }
+  | { risk_tier_code: RiskTierCode | null; why: string; needs_review: boolean };
+
+const CATEGORIZE_SCHEMA: SchemaSpec = {
+  name: "job_title_risk",
+  schema: {
+    type: "object",
+    properties: {
+      action: { type: "string", enum: ["answer", "ask"] },
+      clarifying_question: { type: ["string", "null"] },
+      risk_tier_code: { type: ["string", "null"], enum: [...RISK_TIER_CODES, null] },
+      why: { type: ["string", "null"] },
+      needs_review: { type: "boolean" },
+    },
+    required: ["action", "clarifying_question", "risk_tier_code", "why", "needs_review"],
+    additionalProperties: false,
+  },
+};
+
+const MAX_CLARIFICATIONS = 2;
+
+export async function categorizeJobTitle(input: {
+  title: string;
+  blurb?: string;
+  clarifications?: Clarification[];
+}): Promise<CategorizeResult> {
+  const clarifications = input.clarifications ?? [];
+  const askedCount = clarifications.length;
+  const mayAsk = askedCount < MAX_CLARIFICATIONS;
+
+  const system = [
+    "You assign a single risk/liability tier to a staffing job title for StaffingNation.",
+    riskTierContext(),
+    `The risk axis turns on a few questions: does the worker DRIVE as a core duty, work at HEIGHTS or operate heavy/dangerous EQUIPMENT, handle HAZARDOUS materials, handle CASH, or work with MINORS or in other regulated/sensitive contexts?`,
+    `If the title (plus any blurb and prior answers) clearly maps to one tier, set action="answer" with risk_tier_code, a one-sentence "why", and needs_review=false.`,
+    `If it is genuinely AMBIGUOUS on one of those risk-relevant axes, and you ${mayAsk ? "MAY still ask" : "may NOT ask any more questions"} (asked ${askedCount} of ${MAX_CLARIFICATIONS}), set action="ask" with a single targeted clarifying_question. Otherwise you must answer.`,
+    `If no tier fits even after clarification, set action="answer", risk_tier_code=null, needs_review=true (a possible addendum case).`,
+    'Respond as JSON matching the schema. When answering, clarifying_question must be null; when asking, risk_tier_code/why may be null and needs_review=false.',
+  ].join("\n\n");
+
+  const userLines = [`TITLE: ${input.title}`];
+  if (input.blurb) userLines.push(`BLURB: ${input.blurb}`);
+  for (const c of clarifications) userLines.push(`Q: ${c.question}\nA: ${c.answer}`);
+
+  let parsed: {
+    action?: string;
+    clarifying_question?: string | null;
+    risk_tier_code?: string | null;
+    why?: string | null;
+    needs_review?: boolean;
+  } | null = null;
+  try {
+    parsed = safeJson(await jsonChat(system, userLines.join("\n"), 400, CATEGORIZE_SCHEMA));
+  } catch (e) {
+    console.error("categorizeJobTitle failed:", e);
+  }
+
+  if (!parsed) return { risk_tier_code: null, why: "Could not categorize.", needs_review: true };
+
+  if (parsed.action === "ask" && mayAsk && parsed.clarifying_question?.trim()) {
+    return { clarifying_question: parsed.clarifying_question.trim() };
+  }
+
+  const valid = new Set<string>(RISK_TIER_CODES);
+  const code = parsed.risk_tier_code && valid.has(parsed.risk_tier_code) ? (parsed.risk_tier_code as RiskTierCode) : null;
+  return {
+    risk_tier_code: code,
+    why: parsed.why ?? "",
+    needs_review: parsed.needs_review === true || code === null,
   };
 }
