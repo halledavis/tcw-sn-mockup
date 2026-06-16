@@ -76,7 +76,6 @@ export default function NewClientWizard() {
   const [complianceOn, setComplianceOn] = useState(false);
   const [scopeCountries, setScopeCountries] = useState<string[]>([]);
   const [subs, setSubs] = useState<Record<string, string[]>>({});
-  const [addCountryCode, setAddCountryCode] = useState("");
   const [locations, setLocations] = useState<Loc[]>([]);
   const [locForm, setLocForm] = useState<Loc>({ ...emptyLoc });
   const [departments, setDepartments] = useState<{ name: string; internal_id: string }[]>([]);
@@ -223,7 +222,6 @@ export default function NewClientWizard() {
   function addCountry(code: string) {
     if (!code) return;
     setScopeCountries((prev) => (prev.includes(code) ? prev : [...prev, code]));
-    setAddCountryCode("");
   }
   function removeCountry(code: string) {
     setScopeCountries((prev) => prev.filter((c) => c !== code));
@@ -233,11 +231,21 @@ export default function NewClientWizard() {
       return n;
     });
   }
+  function toggleCountry(code: string) {
+    if (scopeCountries.includes(code)) removeCountry(code);
+    else addCountry(code);
+  }
   function toggleSub(country: string, code: string) {
     setSubs((prev) => {
       const cur = prev[country] ?? [];
       return { ...prev, [country]: cur.includes(code) ? cur.filter((x) => x !== code) : [...cur, code] };
     });
+  }
+  function selectAllSubs(country: string, list: { code: string }[]) {
+    setSubs((prev) => ({ ...prev, [country]: list.map((s) => s.code) }));
+  }
+  function clearSubs(country: string) {
+    setSubs((prev) => ({ ...prev, [country]: [] }));
   }
   const locLabel = (l: Loc) => l.name.trim() || `${l.street} – ${l.city}, ${l.state}, ${l.country}`;
 
@@ -580,71 +588,12 @@ export default function NewClientWizard() {
             <h2>Operating scope &amp; org structure</h2>
             <p className="muted small">All sections optional.</p>
 
-            {/* Section A — geography */}
-            <h3 style={{ marginTop: 16 }}>A. Geography</h3>
-            <p className="muted small">Countries the client operates in.</p>
-            <select style={inp} value={addCountryCode} onChange={(e) => addCountry(e.target.value)}>
-              <option value="">Add a country…</option>
-              {COUNTRIES.filter((c) => !scopeCountries.includes(c.code)).map((c) => (
-                <option key={c.code} value={c.code}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-
-            {scopeCountries.map((cc) => {
-              const list = subdivisionsFor(cc);
-              const sel = subs[cc] ?? [];
-              return (
-                <div key={cc} className="rec" style={{ marginTop: 10 }}>
-                  <div className="spread">
-                    <strong>{countryName(cc)}</strong>
-                    <button onClick={() => removeCountry(cc)}>Remove</button>
-                  </div>
-                  {list ? (
-                    <div style={{ marginTop: 6 }}>
-                      <label className="small muted">{cc === "US" ? "States" : "Provinces (optional)"}</label>
-                      <select style={inp} value="" onChange={(e) => e.target.value && toggleSub(cc, e.target.value)}>
-                        <option value="">Add {cc === "US" ? "state" : "province"}…</option>
-                        {list
-                          .filter((s) => !sel.includes(s.code))
-                          .map((s) => (
-                            <option key={s.code} value={s.code}>
-                              {s.name}
-                            </option>
-                          ))}
-                      </select>
-                      <div style={{ marginTop: 6 }}>
-                        {sel.map((code) => (
-                          <span key={code} className="pill on" style={{ cursor: "pointer" }} onClick={() => toggleSub(cc, code)} title="Remove">
-                            {code} ✕
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="muted small" style={{ marginTop: 6 }}>→ generates a {countryName(cc)} addendum</div>
-                  )}
-                </div>
-              );
-            })}
-
-            {hasNonUS && !complianceOn && (
-              <div className="panel mock" style={{ marginTop: 12 }}>
-                <p className="small" style={{ marginTop: 0 }}>
-                  A non-US country is in scope, but Globalized Compliance is off — international placements require it.
-                </p>
-                <button className="primary" disabled={enabling} onClick={enableCompliance}>
-                  {enabling ? "Enabling…" : "Enable Globalized Compliance"}
-                </button>
-              </div>
-            )}
-            {hasNonUS && complianceOn && (
-              <p className="small" style={{ marginTop: 8, color: "var(--accent)" }}>✓ Globalized Compliance enabled.</p>
-            )}
-
-            {/* Section B — locations */}
-            <h3 style={{ marginTop: 20 }}>B. Locations</h3>
+            {/* Section A — core physical locations */}
+            <h3 style={{ marginTop: 16 }}>A. Core physical locations</h3>
+            <p className="muted small">
+              Please list or upload all office locations/worksites. You can simply provide name, city, state,
+              country for now and add address detail later.
+            </p>
             {locations.length > 0 && (
               <div style={{ marginBottom: 10 }}>
                 {locations.map((l, i) => (
@@ -663,7 +612,7 @@ export default function NewClientWizard() {
             </div>
             <div className="row" style={{ marginTop: 8 }}>
               <div style={{ flex: 2 }}>
-                <label className="small muted">Street</label>
+                <label className="small muted">Street (optional)</label>
                 <input style={inp} value={locForm.street} onChange={(e) => setLocForm({ ...locForm, street: e.target.value })} />
               </div>
               <div style={{ flex: 1 }}>
@@ -688,13 +637,13 @@ export default function NewClientWizard() {
                 </select>
               </div>
               <div style={{ flex: 1 }}>
-                <label className="small muted">Postal</label>
+                <label className="small muted">Postal (optional)</label>
                 <input style={inp} value={locForm.postal} onChange={(e) => setLocForm({ ...locForm, postal: e.target.value })} />
               </div>
             </div>
             <div className="row" style={{ marginTop: 8 }}>
               <div style={{ flex: 1 }}>
-                <label className="small muted">Internal ID</label>
+                <label className="small muted">Internal ID (optional)</label>
                 <input style={inp} value={locForm.internal_id} onChange={(e) => setLocForm({ ...locForm, internal_id: e.target.value })} />
               </div>
               <label className="small muted" style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 22 }}>
@@ -708,6 +657,80 @@ export default function NewClientWizard() {
                   <div key={i} className="small" style={{ color: "var(--accent)" }}>↪ {n}</div>
                 ))}
               </div>
+            )}
+
+            {/* Section B — additional scope locations (geography) */}
+            <h3 style={{ marginTop: 24 }}>B. Additional scope locations</h3>
+            <p className="muted small">
+              Countries (and US states / CA provinces) the client operates in, beyond the physical locations above.
+              Click to select as many as you need.
+            </p>
+            <div>
+              {COUNTRIES.map((c) => (
+                <span
+                  key={c.code}
+                  className={`pill ${scopeCountries.includes(c.code) ? "on" : ""}`}
+                  style={{ cursor: "pointer", padding: "4px 10px", display: "inline-block" }}
+                  onClick={() => toggleCountry(c.code)}
+                >
+                  {c.name}
+                </span>
+              ))}
+            </div>
+
+            {scopeCountries.map((cc) => {
+              const list = subdivisionsFor(cc);
+              const sel = subs[cc] ?? [];
+              return (
+                <div key={cc} className="rec" style={{ marginTop: 10 }}>
+                  <div className="spread">
+                    <strong>{countryName(cc)}</strong>
+                    <button onClick={() => removeCountry(cc)}>Remove</button>
+                  </div>
+                  {list ? (
+                    <div style={{ marginTop: 6 }}>
+                      <div className="spread">
+                        <label className="small muted">
+                          {cc === "US" ? "States" : "Provinces (optional)"} — {sel.length} selected
+                        </label>
+                        <span className="small">
+                          <button onClick={() => selectAllSubs(cc, list)}>Select all</button>{" "}
+                          <button onClick={() => clearSubs(cc)} disabled={sel.length === 0}>Clear</button>
+                        </span>
+                      </div>
+                      <div style={{ marginTop: 6 }}>
+                        {list.map((s) => (
+                          <span
+                            key={s.code}
+                            className={`pill ${sel.includes(s.code) ? "on" : ""}`}
+                            style={{ cursor: "pointer" }}
+                            onClick={() => toggleSub(cc, s.code)}
+                            title={s.name}
+                          >
+                            {s.code}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="muted small" style={{ marginTop: 6 }}>→ generates a {countryName(cc)} addendum</div>
+                  )}
+                </div>
+              );
+            })}
+
+            {hasNonUS && !complianceOn && (
+              <div className="panel mock" style={{ marginTop: 12 }}>
+                <p className="small" style={{ marginTop: 0 }}>
+                  A non-US country is in scope, but Globalized Compliance is off — international placements require it.
+                </p>
+                <button className="primary" disabled={enabling} onClick={enableCompliance}>
+                  {enabling ? "Enabling…" : "Enable Globalized Compliance"}
+                </button>
+              </div>
+            )}
+            {hasNonUS && complianceOn && (
+              <p className="small" style={{ marginTop: 8, color: "var(--accent)" }}>✓ Globalized Compliance enabled.</p>
             )}
 
             {/* Section C — departments */}
