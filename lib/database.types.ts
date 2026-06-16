@@ -133,6 +133,108 @@ export type Database = {
           },
         ]
       }
+      client_country_scope: {
+        Row: {
+          addendum_ref: string | null
+          addendum_status: Database["public"]["Enums"]["addendum_status"]
+          country_code: string
+          created_at: string
+          entity_id: string
+          id: string
+        }
+        Insert: {
+          addendum_ref?: string | null
+          addendum_status?: Database["public"]["Enums"]["addendum_status"]
+          country_code: string
+          created_at?: string
+          entity_id: string
+          id?: string
+        }
+        Update: {
+          addendum_ref?: string | null
+          addendum_status?: Database["public"]["Enums"]["addendum_status"]
+          country_code?: string
+          created_at?: string
+          entity_id?: string
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_country_scope_entity_id_fkey"
+            columns: ["entity_id"]
+            isOneToOne: false
+            referencedRelation: "entity"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      client_subdivision_scope: {
+        Row: {
+          country_code: string
+          created_at: string
+          entity_id: string
+          id: string
+          subdivision_code: string
+          subdivision_type: Database["public"]["Enums"]["subdivision_type"]
+        }
+        Insert: {
+          country_code: string
+          created_at?: string
+          entity_id: string
+          id?: string
+          subdivision_code: string
+          subdivision_type: Database["public"]["Enums"]["subdivision_type"]
+        }
+        Update: {
+          country_code?: string
+          created_at?: string
+          entity_id?: string
+          id?: string
+          subdivision_code?: string
+          subdivision_type?: Database["public"]["Enums"]["subdivision_type"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_subdivision_scope_entity_id_fkey"
+            columns: ["entity_id"]
+            isOneToOne: false
+            referencedRelation: "entity"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      department: {
+        Row: {
+          created_at: string
+          entity_id: string
+          id: string
+          internal_id: string | null
+          name: string
+        }
+        Insert: {
+          created_at?: string
+          entity_id: string
+          id?: string
+          internal_id?: string | null
+          name: string
+        }
+        Update: {
+          created_at?: string
+          entity_id?: string
+          id?: string
+          internal_id?: string | null
+          name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "department_entity_id_fkey"
+            columns: ["entity_id"]
+            isOneToOne: false
+            referencedRelation: "entity"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       entity: {
         Row: {
           address: Json | null
@@ -526,6 +628,7 @@ export type Database = {
           billing_entity_id: string | null
           billing_model: Database["public"]["Enums"]["billing_model"] | null
           created_at: string
+          department_id: string | null
           end_date: string | null
           entity_id: string
           flow_type: Database["public"]["Enums"]["flow_type"]
@@ -546,6 +649,7 @@ export type Database = {
           billing_entity_id?: string | null
           billing_model?: Database["public"]["Enums"]["billing_model"] | null
           created_at?: string
+          department_id?: string | null
           end_date?: string | null
           entity_id: string
           flow_type: Database["public"]["Enums"]["flow_type"]
@@ -566,6 +670,7 @@ export type Database = {
           billing_entity_id?: string | null
           billing_model?: Database["public"]["Enums"]["billing_model"] | null
           created_at?: string
+          department_id?: string | null
           end_date?: string | null
           entity_id?: string
           flow_type?: Database["public"]["Enums"]["flow_type"]
@@ -587,6 +692,13 @@ export type Database = {
             columns: ["billing_entity_id"]
             isOneToOne: false
             referencedRelation: "entity"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_order_department_id_fkey"
+            columns: ["department_id"]
+            isOneToOne: false
+            referencedRelation: "department"
             referencedColumns: ["id"]
           },
           {
@@ -615,6 +727,56 @@ export type Database = {
             columns: ["submitted_by"]
             isOneToOne: false
             referencedRelation: "app_user"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      location: {
+        Row: {
+          city: string | null
+          country: string | null
+          created_at: string
+          entity_id: string
+          id: string
+          internal_id: string | null
+          is_primary: boolean
+          name: string | null
+          postal: string | null
+          state: string | null
+          street: string | null
+        }
+        Insert: {
+          city?: string | null
+          country?: string | null
+          created_at?: string
+          entity_id: string
+          id?: string
+          internal_id?: string | null
+          is_primary?: boolean
+          name?: string | null
+          postal?: string | null
+          state?: string | null
+          street?: string | null
+        }
+        Update: {
+          city?: string | null
+          country?: string | null
+          created_at?: string
+          entity_id?: string
+          id?: string
+          internal_id?: string | null
+          is_primary?: boolean
+          name?: string | null
+          postal?: string | null
+          state?: string | null
+          street?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "location_entity_id_fkey"
+            columns: ["entity_id"]
+            isOneToOne: false
+            referencedRelation: "entity"
             referencedColumns: ["id"]
           },
         ]
@@ -790,6 +952,12 @@ export type Database = {
       }
     }
     Enums: {
+      addendum_status:
+        | "not_applicable"
+        | "pending"
+        | "draft"
+        | "sent"
+        | "signed"
       app_user_role:
         | "admin"
         | "hiring_manager"
@@ -824,6 +992,7 @@ export type Database = {
         | "jd"
         | "order"
       source_type: "self_sourced" | "externally_sourced" | "outside_sn"
+      subdivision_type: "state" | "province"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -954,6 +1123,7 @@ export const Constants = {
   },
   public: {
     Enums: {
+      addendum_status: ["not_applicable", "pending", "draft", "sent", "signed"],
       app_user_role: [
         "admin",
         "hiring_manager",
@@ -991,6 +1161,7 @@ export const Constants = {
         "order",
       ],
       source_type: ["self_sourced", "externally_sourced", "outside_sn"],
+      subdivision_type: ["state", "province"],
     },
   },
 } as const
