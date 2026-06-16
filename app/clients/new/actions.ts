@@ -106,11 +106,7 @@ export async function confirmIntakeAction(input: unknown): Promise<ConfirmResult
   }
   const v = parsed.data;
 
-  // A signatory contact (name + email) is required.
-  const sig = v.contacts.find((c) => c.kind === "signatory");
-  if (!sig || !sig.first_name || !sig.last_name || !sig.email) {
-    return { ok: false, error: "A signatory contact (first name, last name, email) is required." };
-  }
+  // Contacts are optional in this mockup — incomplete ones are filtered out below.
 
   // De-dupe service codes; build the sources map for the RPC.
   const seen = new Set<string>();

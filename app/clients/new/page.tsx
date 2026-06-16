@@ -172,9 +172,6 @@ export default function NewClientWizard() {
     setError("");
     if (!persona) return;
     if (!legalName.trim()) return setError("Legal entity name is required.");
-    if (!spoc.first_name.trim() || !spoc.last_name.trim() || !spoc.email.trim()) {
-      return setError("Signatory contact needs first name, last name, and email.");
-    }
     setConfirming(true);
     const primary = ppocSame ? spoc : ppoc;
     const selections = [...selected].map((code) => ({
@@ -553,7 +550,7 @@ export default function NewClientWizard() {
               </div>
             </div>
 
-            <h3 style={{ marginTop: 20 }}>Signatory Point of Contact *</h3>
+            <h3 style={{ marginTop: 20 }}>Signatory Point of Contact (optional)</h3>
             {contactFields(spoc, setSpoc)}
 
             <h3 style={{ marginTop: 20 }}>Primary Point of Contact</h3>
