@@ -86,6 +86,51 @@ export type Database = {
           },
         ]
       }
+      bill_card: {
+        Row: {
+          created_at: string
+          entity_id: string
+          id: string
+          markup_pct: number | null
+          risk_tier_id: string
+          states: Json
+          status: Database["public"]["Enums"]["bill_card_status"]
+        }
+        Insert: {
+          created_at?: string
+          entity_id: string
+          id?: string
+          markup_pct?: number | null
+          risk_tier_id: string
+          states?: Json
+          status?: Database["public"]["Enums"]["bill_card_status"]
+        }
+        Update: {
+          created_at?: string
+          entity_id?: string
+          id?: string
+          markup_pct?: number | null
+          risk_tier_id?: string
+          states?: Json
+          status?: Database["public"]["Enums"]["bill_card_status"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bill_card_entity_id_fkey"
+            columns: ["entity_id"]
+            isOneToOne: false
+            referencedRelation: "entity"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bill_card_risk_tier_id_fkey"
+            columns: ["risk_tier_id"]
+            isOneToOne: false
+            referencedRelation: "risk_tier"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       bill_rate_rule: {
         Row: {
           bill_rate: number | null
@@ -164,6 +209,60 @@ export type Database = {
             columns: ["entity_id"]
             isOneToOne: false
             referencedRelation: "entity"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      client_job_title: {
+        Row: {
+          ai_rationale: string | null
+          blurb: string | null
+          clarifications: Json
+          created_at: string
+          entity_id: string
+          id: string
+          needs_review: boolean
+          risk_tier_id: string | null
+          status: Database["public"]["Enums"]["job_title_status"]
+          title: string
+        }
+        Insert: {
+          ai_rationale?: string | null
+          blurb?: string | null
+          clarifications?: Json
+          created_at?: string
+          entity_id: string
+          id?: string
+          needs_review?: boolean
+          risk_tier_id?: string | null
+          status?: Database["public"]["Enums"]["job_title_status"]
+          title: string
+        }
+        Update: {
+          ai_rationale?: string | null
+          blurb?: string | null
+          clarifications?: Json
+          created_at?: string
+          entity_id?: string
+          id?: string
+          needs_review?: boolean
+          risk_tier_id?: string | null
+          status?: Database["public"]["Enums"]["job_title_status"]
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "client_job_title_entity_id_fkey"
+            columns: ["entity_id"]
+            isOneToOne: false
+            referencedRelation: "entity"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "client_job_title_risk_tier_id_fkey"
+            columns: ["risk_tier_id"]
+            isOneToOne: false
+            referencedRelation: "risk_tier"
             referencedColumns: ["id"]
           },
         ]
@@ -493,6 +592,8 @@ export type Database = {
           pay_type: Database["public"]["Enums"]["pay_type"]
           requirements: string | null
           responsibilities: string | null
+          risk_tier_id: string | null
+          risk_tier_status: Database["public"]["Enums"]["jd_risk_status"] | null
           soc_code: string | null
           status: Database["public"]["Enums"]["jd_status"]
           title: string
@@ -511,6 +612,10 @@ export type Database = {
           pay_type: Database["public"]["Enums"]["pay_type"]
           requirements?: string | null
           responsibilities?: string | null
+          risk_tier_id?: string | null
+          risk_tier_status?:
+            | Database["public"]["Enums"]["jd_risk_status"]
+            | null
           soc_code?: string | null
           status?: Database["public"]["Enums"]["jd_status"]
           title: string
@@ -529,6 +634,10 @@ export type Database = {
           pay_type?: Database["public"]["Enums"]["pay_type"]
           requirements?: string | null
           responsibilities?: string | null
+          risk_tier_id?: string | null
+          risk_tier_status?:
+            | Database["public"]["Enums"]["jd_risk_status"]
+            | null
           soc_code?: string | null
           status?: Database["public"]["Enums"]["jd_status"]
           title?: string
@@ -547,6 +656,13 @@ export type Database = {
             columns: ["parent_jd_id"]
             isOneToOne: false
             referencedRelation: "jd"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "jd_risk_tier_id_fkey"
+            columns: ["risk_tier_id"]
+            isOneToOne: false
+            referencedRelation: "risk_tier"
             referencedColumns: ["id"]
           },
         ]
@@ -849,6 +965,36 @@ export type Database = {
           },
         ]
       }
+      risk_tier: {
+        Row: {
+          code: string
+          created_at: string
+          default_markup_pct: number | null
+          description: string | null
+          id: string
+          name: string
+          sort_order: number
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          default_markup_pct?: number | null
+          description?: string | null
+          id?: string
+          name: string
+          sort_order?: number
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          default_markup_pct?: number | null
+          description?: string | null
+          id?: string
+          name?: string
+          sort_order?: number
+        }
+        Relationships: []
+      }
       service: {
         Row: {
           code: string
@@ -980,6 +1126,7 @@ export type Database = {
         | "eor_admin"
         | "worker"
       app_user_status: "active" | "inactive" | "invited"
+      bill_card_status: "draft" | "active"
       billing_model: "markup" | "bill_rate"
       contact_kind: "signatory" | "primary"
       entity_kind: "client" | "tcw" | "eor" | "agency" | "vendor" | "msp"
@@ -989,6 +1136,7 @@ export type Database = {
       flow_type: "worker" | "supplier"
       intake_persona: "cra" | "prospect"
       intake_status: "in_progress" | "completed" | "confirmed"
+      jd_risk_status: "ai_estimated" | "confirmed" | "needs_review"
       jd_status: "draft" | "pending" | "approved"
       job_order_status:
         | "open"
@@ -997,6 +1145,7 @@ export type Database = {
         | "closed"
         | "cancelled"
       job_status: "offered" | "active" | "ended"
+      job_title_status: "ai_suggested" | "confirmed" | "needs_review"
       pay_type: "hourly" | "salary"
       scope_level:
         | "system"
@@ -1147,6 +1296,7 @@ export const Constants = {
         "worker",
       ],
       app_user_status: ["active", "inactive", "invited"],
+      bill_card_status: ["draft", "active"],
       billing_model: ["markup", "bill_rate"],
       contact_kind: ["signatory", "primary"],
       entity_kind: ["client", "tcw", "eor", "agency", "vendor", "msp"],
@@ -1156,6 +1306,7 @@ export const Constants = {
       flow_type: ["worker", "supplier"],
       intake_persona: ["cra", "prospect"],
       intake_status: ["in_progress", "completed", "confirmed"],
+      jd_risk_status: ["ai_estimated", "confirmed", "needs_review"],
       jd_status: ["draft", "pending", "approved"],
       job_order_status: [
         "open",
@@ -1165,6 +1316,7 @@ export const Constants = {
         "cancelled",
       ],
       job_status: ["offered", "active", "ended"],
+      job_title_status: ["ai_suggested", "confirmed", "needs_review"],
       pay_type: ["hourly", "salary"],
       scope_level: [
         "system",
