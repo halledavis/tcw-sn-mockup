@@ -6,14 +6,22 @@ import {
   SERVICES,
   COUNTRIES,
   subdivisionsFor,
+  RISK_TIERS,
   type Persona,
   type Recommendation,
   type TranscriptTurn,
 } from "@/lib/catalog";
 import { interviewAction, synthesizeAction, confirmIntakeAction, describeAction } from "./actions";
 import { saveScopeAndOrg, enableGlobalizedCompliance } from "@/app/clients/[id]/scope/actions";
+import {
+  categorizeJobTitle,
+  saveJobTitles,
+  deriveBillCards,
+  listRiskTiers,
+  saveBillCards,
+} from "@/app/clients/[id]/job-titles/actions";
 
-type Step = "persona" | "brief" | "qa" | "recs" | "builder" | "scope";
+type Step = "persona" | "brief" | "qa" | "recs" | "builder" | "scope" | "jobtitles";
 
 const inp: React.CSSProperties = {
   width: "100%",
@@ -29,6 +37,34 @@ type Contact = typeof emptyContact;
 
 const emptyLoc = { name: "", street: "", city: "", state: "", country: "", postal: "", internal_id: "", is_primary: false };
 type Loc = typeof emptyLoc;
+
+type Clarify = { question: string; answer: string };
+type TitleRow = {
+  title: string;
+  blurb: string;
+  clarifications: Clarify[];
+  tier: string | null; // risk_tier code, or null = needs review
+  why: string;
+  needs_review: boolean;
+  confirmed: boolean;
+  question: string | null; // pending clarifying question
+  answerDraft: string;
+  busy: boolean;
+};
+type CardRow = { id: string; risk_tier_id: string; markup_pct: number | null; states: string; status: "draft" | "active" };
+
+const newTitleRow = (title: string): TitleRow => ({
+  title,
+  blurb: "",
+  clarifications: [],
+  tier: null,
+  why: "",
+  needs_review: false,
+  confirmed: false,
+  question: null,
+  answerDraft: "",
+  busy: false,
+});
 
 export default function NewClientWizard() {
   const router = useRouter();
@@ -77,6 +113,14 @@ export default function NewClientWizard() {
   const [scopeNotes, setScopeNotes] = useState<string[]>([]);
   const [finishing, setFinishing] = useState(false);
   const [enabling, setEnabling] = useState(false);
+
+  // Page 6 — job types & bill cards
+  const [titleRows, setTitleRows] = useState<TitleRow[]>([]);
+  const [pasteText, setPasteText] = useState("");
+  const [cards, setCards] = useState<CardRow[]>([]);
+  const [tierById, setTierById] = useState<Record<string, { code: string; name: string }>>({});
+  const [generating, setGenerating] = useState(false);
+  const [savingFinal, setSavingFinal] = useState(false);
 
   const recommendedReasons = new Map<string, string>((recs ?? []).map((r) => [r.service_code, r.reason]));
 
@@ -299,11 +343,128 @@ export default function NewClientWizard() {
       departments,
     });
     if (res.ok) {
-      router.push(`/clients/${entityId}`);
+      // Advance to page 6 (job types & bill cards) instead of the summary.
+      setFinishing(false);
+      setStep("jobtitles");
     } else {
       setFinishing(false);
       setError(res.warnings[0] ?? "Save failed.");
     }
+  }
+
+  // --- Page 6 helpers ---
+  const patchRow = (i: number, patch: Partial<TitleRow>) =>
+    setTitleRows((prev) => prev.map((r, j) => (j === i ? { ...r, ...patch } : r)));
+
+  function addPastedTitles() {
+    const lines = pasteText.split("\n").map((s) => s.trim()).filter(Boolean);
+    if (!lines.length) return;
+    setTitleRows((prev) => [...prev, ...lines.map(newTitleRow)]);
+    setPasteText("");
+  }
+
+  async function categorizeRow(i: number) {
+    const r = titleRows[i];
+    if (!r || !r.title.trim()) return;
+    patchRow(i, { busy: true });
+    const res = await categorizeJobTitle({ title: r.title, blurb: r.blurb || undefined, clarifications: r.clarifications });
+    if ("clarifying_question" in res) {
+      patchRow(i, { busy: false, question: res.clarifying_question });
+    } else {
+      patchRow(i, { busy: false, question: null, tier: res.risk_tier_code, why: res.why, needs_review: res.needs_review, confirmed: false });
+    }
+  }
+
+  async function categorizeAll() {
+    for (let i = 0; i < titleRows.length; i++) {
+      if (!titleRows[i].tier && !titleRows[i].question) await categorizeRow(i);
+    }
+  }
+
+  async function submitClarify(i: number) {
+    const r = titleRows[i];
+    if (!r.question || !r.answerDraft.trim()) return;
+    const clarifications = [...r.clarifications, { question: r.question, answer: r.answerDraft.trim() }];
+    patchRow(i, { clarifications, question: null, answerDraft: "", busy: true });
+    const res = await categorizeJobTitle({ title: r.title, blurb: r.blurb || undefined, clarifications });
+    if ("clarifying_question" in res) patchRow(i, { busy: false, question: res.clarifying_question });
+    else patchRow(i, { busy: false, question: null, tier: res.risk_tier_code, why: res.why, needs_review: res.needs_review });
+  }
+
+  function setRowTier(i: number, code: string) {
+    patchRow(i, { tier: code || null, needs_review: !code });
+  }
+  const titlePayload = () =>
+    titleRows.map((r) => ({
+      title: r.title,
+      blurb: r.blurb || undefined,
+      risk_tier_code: (r.tier ?? null) as null | string,
+      ai_rationale: r.why || undefined,
+      needs_review: !r.tier,
+      clarifications: r.clarifications,
+    }));
+  const parseStates = (s: string) => {
+    const parts = s.split(",").map((x) => x.trim().toUpperCase()).filter(Boolean);
+    return parts.length ? parts : ["ALL"];
+  };
+
+  async function generateCards() {
+    if (!entityId) return;
+    setError("");
+    if (titleRows.length === 0) return setError("Add at least one job title.");
+    if (!titleRows.every((r) => r.confirmed)) return setError("Confirm every title before generating bill cards.");
+    setGenerating(true);
+    const saved = await saveJobTitles(entityId, titlePayload());
+    if (!saved.ok) {
+      setGenerating(false);
+      return setError(saved.error);
+    }
+    const [tiers, derived] = await Promise.all([listRiskTiers(), deriveBillCards(entityId)]);
+    setTierById(Object.fromEntries(tiers.map((t) => [t.id, { code: t.code, name: t.name }])));
+    if (!derived.ok) {
+      setGenerating(false);
+      return setError(derived.error);
+    }
+    setCards((prev) => {
+      const have = new Set(prev.map((c) => c.id));
+      const fresh: CardRow[] = derived.cards
+        .filter((c) => !have.has(c.id))
+        .map((c) => ({
+          id: c.id,
+          risk_tier_id: c.risk_tier_id,
+          markup_pct: c.markup_pct,
+          states: Array.isArray(c.states) ? (c.states as string[]).join(", ") : "ALL",
+          status: c.status as "draft" | "active",
+        }));
+      return [...prev, ...fresh];
+    });
+    setGenerating(false);
+  }
+
+  const patchCard = (i: number, patch: Partial<CardRow>) =>
+    setCards((prev) => prev.map((c, j) => (j === i ? { ...c, ...patch } : c)));
+
+  async function finishJobTitles() {
+    if (!entityId) return;
+    setError("");
+    setSavingFinal(true);
+    if (titleRows.length) {
+      const sr = await saveJobTitles(entityId, titlePayload());
+      if (!sr.ok) {
+        setSavingFinal(false);
+        return setError(sr.error);
+      }
+    }
+    if (cards.length) {
+      const cr = await saveBillCards(
+        cards.map((c) => ({ id: c.id, markup_pct: c.markup_pct, states: parseStates(c.states), status: c.status })),
+      );
+      if (!cr.ok) {
+        setSavingFinal(false);
+        return setError(cr.error ?? "Save failed.");
+      }
+    }
+    router.push(`/clients/${entityId}`);
   }
 
   // Small reusable contact field group.
@@ -360,7 +521,7 @@ export default function NewClientWizard() {
         {/* Screen 2 — brief */}
         {step === "brief" && (
           <div className="panel">
-            <div className="steps">Step 1 of 4</div>
+            <div className="steps">Step 1 of 6</div>
     <h2
       style={{
         textAlign: "center",
@@ -387,7 +548,7 @@ export default function NewClientWizard() {
         {/* Screen 3 — adaptive Q&A */}
         {step === "qa" && (
           <div className="panel">
-            <div className="steps">Step 2 of 4 · AI HR Consultant</div>
+            <div className="steps">Step 2 of 6 · AI HR Consultant</div>
             {transcript.map((t, i) => (
               <div key={i} className={`bubble ${t.role}`}>
                 {t.content}
@@ -414,7 +575,7 @@ export default function NewClientWizard() {
         {/* Screen 4 — services + modules */}
         {step === "recs" && (
           <div className="panel">
-            <div className="steps">Step 3 of 4 · Services</div>
+            <div className="steps">Step 3 of 6 · Services</div>
             {thinking && !recs && <p className="muted">Analyzing the conversation…</p>}
             {recs && (
               <>
@@ -464,7 +625,7 @@ export default function NewClientWizard() {
         {/* Screen 5 — client builder (page 4) */}
         {step === "builder" && (
           <div className="panel">
-            <div className="steps">Step 4 of 5 · Client Details</div>
+            <div className="steps">Step 4 of 6 · Client Details</div>
             <h2>Client Details</h2>
 
             <div style={{ marginTop: 8 }}>
@@ -475,8 +636,6 @@ export default function NewClientWizard() {
               <label className="small muted">DBA (if any)</label>
               <input style={inp} value={dba} onChange={(e) => setDba(e.target.value)} />
             </div>
-
-            <h3 style={{ marginTop: 20 }}>Identifiers</h3>
             <div className="row">
               <div style={{ flex: 1 }}>
                 <label className="small muted">FEIN #</label>
@@ -520,7 +679,7 @@ export default function NewClientWizard() {
               </div>
             </div>
 
-            <h3 style={{ marginTop: 20 }}>Signatory Point of Contact (optional)</h3>
+            <h3 style={{ marginTop: 20 }}>Signatory Point of Contact</h3>
             {contactFields(spoc, setSpoc)}
 
             <h3 style={{ marginTop: 20 }}>Primary Point of Contact</h3>
@@ -551,12 +710,11 @@ export default function NewClientWizard() {
         {/* Screen 6 — operating scope & org structure (page 5) */}
         {step === "scope" && (
           <div className="panel">
-            <div className="steps">Step 5 of 5 · Operating Scope &amp; Org Structure</div>
-            <h2>Operating scope &amp; org structure</h2>
-            <p className="muted small">All sections optional.</p>
+            <div className="steps">Step 5 of 6 · Operating Scope &amp; Org Structure</div>
+            <h2>Operating Scope &amp; Org Structure</h2>
 
             {/* Section A — core physical locations */}
-            <h3 style={{ marginTop: 16 }}>A. Core physical locations</h3>
+            <h3 style={{ marginTop: 16 }}>Core Physical Locations</h3>
             <p className="muted small">
               Please list or upload all office locations/worksites. You can simply provide name, city, state,
               country for now and add address detail later. At least one location is required, and one must be
@@ -633,7 +791,7 @@ export default function NewClientWizard() {
             )}
 
             {/* Section B — additional scope locations (geography) */}
-            <h3 style={{ marginTop: 24 }}>B. Additional scope locations</h3>
+            <h3 style={{ marginTop: 24 }}>Additional Scoped Locations</h3>
             <p className="muted small">
               Countries (and US states / CA provinces) the client operates in, beyond the physical locations above.
               Click to select as many as you need.
@@ -707,8 +865,7 @@ export default function NewClientWizard() {
             )}
 
             {/* Section C — departments */}
-            <h3 style={{ marginTop: 20 }}>C. Departments</h3>
-            <p className="muted small">Used to tag orders for your reporting. Optional.</p>
+            <h3 style={{ marginTop: 20 }}>Departments</h3>
             {departments.length > 0 && (
               <div style={{ marginBottom: 10 }}>
                 {departments.map((d, i) => (
@@ -738,7 +895,148 @@ export default function NewClientWizard() {
 
             <div className="row" style={{ marginTop: 20 }}>
               <button className="primary" disabled={finishing} onClick={finishScope}>
-                {finishing ? "Saving…" : "Finish →"}
+                {finishing ? "Saving…" : "Continue →"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Screen 7 — job types & bill cards (page 6) */}
+        {step === "jobtitles" && (
+          <div className="panel">
+            <div className="steps">Step 6 of 6 · Job Types &amp; Bill Cards</div>
+            <h2>Job types &amp; bill cards</h2>
+
+            {/* Section A — titles */}
+            <h3 style={{ marginTop: 16 }}>A. Job titles</h3>
+            <p className="muted small">
+              Add the titles you&apos;ll staff (one per line), then let AI suggest a risk tier for each. You confirm
+              every title before it&apos;s saved.
+            </p>
+            <textarea
+              value={pasteText}
+              onChange={(e) => setPasteText(e.target.value)}
+              placeholder={"Paste titles, one per line…\nWarehouse Associate\nForklift Operator\nOffice Manager"}
+              style={{ minHeight: 70 }}
+            />
+            <div className="row" style={{ marginTop: 8 }}>
+              <button onClick={addPastedTitles} disabled={!pasteText.trim()}>+ Add titles</button>
+              {titleRows.length > 0 && (
+                <>
+                  <button className="primary" onClick={categorizeAll}>Categorize all with AI</button>
+                  <button onClick={() => setTitleRows((prev) => prev.map((r) => ({ ...r, confirmed: r.tier !== null || r.needs_review })))}>
+                    Confirm all reviewed
+                  </button>
+                </>
+              )}
+            </div>
+
+            {titleRows.map((r, i) => {
+              const tierName = r.tier ? RISK_TIERS.find((t) => t.code === r.tier)?.name : null;
+              const categorized = r.tier !== null || r.needs_review || r.why !== "";
+              return (
+                <div key={i} className={`rec ${r.confirmed ? "checked" : ""}`} style={{ marginTop: 10 }}>
+                  <div className="row">
+                    <div style={{ flex: 2 }}>
+                      <label className="small muted">Title</label>
+                      <input style={inp} value={r.title} onChange={(e) => patchRow(i, { title: e.target.value })} />
+                    </div>
+                    <div style={{ flex: 3 }}>
+                      <label className="small muted">Blurb (optional)</label>
+                      <input style={inp} value={r.blurb} onChange={(e) => patchRow(i, { blurb: e.target.value })} />
+                    </div>
+                    <button style={{ marginTop: 20 }} onClick={() => categorizeRow(i)} disabled={r.busy || !r.title.trim()}>
+                      {r.busy ? "…" : "Categorize"}
+                    </button>
+                    <button style={{ marginTop: 20 }} onClick={() => setTitleRows((prev) => prev.filter((_, j) => j !== i))}>✕</button>
+                  </div>
+
+                  {r.question && (
+                    <div className="panel mock" style={{ marginTop: 8 }}>
+                      <p className="small" style={{ marginTop: 0 }}>{r.question}</p>
+                      <div className="row">
+                        <input style={inp} value={r.answerDraft} onChange={(e) => patchRow(i, { answerDraft: e.target.value })} placeholder="Your answer…" />
+                        <button className="primary" disabled={!r.answerDraft.trim()} onClick={() => submitClarify(i)}>Answer</button>
+                      </div>
+                    </div>
+                  )}
+
+                  {categorized && !r.question && (
+                    <div style={{ marginTop: 8 }}>
+                      <div className="row">
+                        <div style={{ flex: 1 }}>
+                          <label className="small muted">Risk tier</label>
+                          <select style={inp} value={r.tier ?? ""} onChange={(e) => setRowTier(i, e.target.value)}>
+                            <option value="">— needs review / no tier —</option>
+                            {RISK_TIERS.map((t) => (
+                              <option key={t.code} value={t.code}>
+                                {t.name} ({t.default_markup_pct}%)
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div style={{ marginTop: 20 }}>
+                          {r.tier ? (
+                            <span className="pill on">{tierName}</span>
+                          ) : (
+                            <span className="pill">needs review / possible addendum</span>
+                          )}
+                        </div>
+                      </div>
+                      {r.why && <div className="muted small" style={{ marginTop: 4 }}>{r.why}</div>}
+                      <label className="small" style={{ display: "block", marginTop: 6 }}>
+                        <input type="checkbox" checked={r.confirmed} onChange={(e) => patchRow(i, { confirmed: e.target.checked })} /> Confirmed
+                      </label>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {/* Section B — bill cards */}
+            <h3 style={{ marginTop: 24 }}>B. Bill cards</h3>
+            <p className="muted small">
+              One draft card per risk tier present in your confirmed titles, seeded with the tier&apos;s default markup.
+              Bill rate = pay × (1 + markup) for EoR.
+            </p>
+            <button className="primary" disabled={generating} onClick={generateCards}>
+              {generating ? "Generating…" : "Generate bill cards"}
+            </button>
+
+            {cards.map((c, i) => (
+              <div key={c.id} className="rec" style={{ marginTop: 10 }}>
+                <div className="row">
+                  <strong style={{ flex: 1, marginTop: 20 }}>{tierById[c.risk_tier_id]?.name ?? "Tier"}</strong>
+                  <div style={{ flex: 1 }}>
+                    <label className="small muted">Markup %</label>
+                    <input
+                      style={inp}
+                      type="number"
+                      value={c.markup_pct ?? ""}
+                      onChange={(e) => patchCard(i, { markup_pct: e.target.value === "" ? null : Number(e.target.value) })}
+                    />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label className="small muted">States (comma, or ALL)</label>
+                    <input style={inp} value={c.states} onChange={(e) => patchCard(i, { states: e.target.value })} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <label className="small muted">Status</label>
+                    <select style={inp} value={c.status} onChange={(e) => patchCard(i, { status: e.target.value as "draft" | "active" })}>
+                      <option value="draft">draft</option>
+                      <option value="active">active</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            ))}
+
+            {error && <div className="err">{error}</div>}
+
+            <div className="row" style={{ marginTop: 20 }}>
+              <button onClick={() => setStep("scope")}>← Back</button>
+              <button className="primary" disabled={savingFinal} onClick={finishJobTitles}>
+                {savingFinal ? "Saving…" : "Finish →"}
               </button>
             </div>
           </div>

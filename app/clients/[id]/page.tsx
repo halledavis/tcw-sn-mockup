@@ -15,6 +15,8 @@ type LocationRow = {
   country: string | null; postal: string | null; internal_id: string | null; is_primary: boolean;
 };
 type DeptRow = { name: string; internal_id: string | null };
+type JobTitleRow = { title: string; status: string; tier: { name: string } | null };
+type BillCardRow = { states: unknown; markup_pct: number | null; status: string; tier: { name: string } | null };
 
 const ADDENDUM_BADGE: Record<string, string> = {
   not_applicable: "n/a",
@@ -49,6 +51,8 @@ export default async function ClientSummary({ params }: { params: Promise<{ id: 
     { data: subData },
     { data: locData },
     { data: deptData },
+    { data: titleData },
+    { data: cardData },
   ] = await Promise.all([
     supabase.from("entity_service").select("status, source, service:service_id(code, name)").eq("entity_id", id),
     supabase.from("entity_module").select("enabled, source, module:module_id(code, name)").eq("entity_id", id),
@@ -57,6 +61,8 @@ export default async function ClientSummary({ params }: { params: Promise<{ id: 
     supabase.from("client_subdivision_scope").select("country_code, subdivision_code, subdivision_type").eq("entity_id", id).order("country_code"),
     supabase.from("location").select("name, street, city, state, country, postal, internal_id, is_primary").eq("entity_id", id),
     supabase.from("department").select("name, internal_id").eq("entity_id", id).order("name"),
+    supabase.from("client_job_title").select("title, status, tier:risk_tier_id(name)").eq("entity_id", id).order("title"),
+    supabase.from("bill_card").select("states, markup_pct, status, tier:risk_tier_id(name)").eq("entity_id", id),
   ]);
 
   const services = (svcData ?? []) as unknown as ServiceRow[];
@@ -66,6 +72,8 @@ export default async function ClientSummary({ params }: { params: Promise<{ id: 
   const subdivisions = (subData ?? []) as unknown as SubRow[];
   const locations = (locData ?? []) as unknown as LocationRow[];
   const departments = (deptData ?? []) as unknown as DeptRow[];
+  const jobTitles = (titleData ?? []) as unknown as JobTitleRow[];
+  const billCards = (cardData ?? []) as unknown as BillCardRow[];
   const addr = (entity.address ?? null) as Address;
   const addrLine = addr
     ? [addr.street, addr.city, addr.state, addr.zip, addr.country].filter(Boolean).join(", ")
@@ -209,6 +217,37 @@ export default async function ClientSummary({ params }: { params: Promise<{ id: 
             <div key={i} className="spread" style={{ padding: "4px 0" }}>
               <span>{d.name}</span>
               <span className="small muted">{d.internal_id ?? ""}</span>
+            </div>
+          ))}
+        </div>
+
+        <div className="panel">
+          <h2>Job titles</h2>
+          {jobTitles.length === 0 && <p className="muted">None.</p>}
+          {jobTitles.map((t, i) => (
+            <div key={i} className="spread" style={{ padding: "6px 0", borderBottom: "1px solid var(--line)" }}>
+              <span>{t.title}</span>
+              <span className="small muted">
+                {t.tier?.name ?? "—"}{" "}
+                <span className={`pill ${t.status === "confirmed" ? "on" : ""}`}>{t.status}</span>
+              </span>
+            </div>
+          ))}
+        </div>
+
+        <div className="panel">
+          <h2>Bill cards</h2>
+          {billCards.length === 0 && <p className="muted">None.</p>}
+          {billCards.map((c, i) => (
+            <div key={i} className="spread" style={{ padding: "6px 0", borderBottom: "1px solid var(--line)" }}>
+              <span>
+                {c.tier?.name ?? "—"}{" "}
+                <span className="muted small">{Array.isArray(c.states) ? (c.states as string[]).join(", ") : "ALL"}</span>
+              </span>
+              <span className="small muted">
+                {c.markup_pct != null ? `${c.markup_pct}%` : "—"}{" "}
+                <span className={`pill ${c.status === "active" ? "on" : ""}`}>{c.status}</span>
+              </span>
             </div>
           ))}
         </div>

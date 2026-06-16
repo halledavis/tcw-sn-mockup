@@ -61,6 +61,51 @@ export async function saveJobTitles(entityId: string, titles: unknown): Promise<
   }
 }
 
+// --- Risk-tier catalog (id -> code/name, for display) ---
+export type RiskTierRow = { id: string; code: string; name: string; default_markup_pct: number | null };
+
+export async function listRiskTiers(): Promise<RiskTierRow[]> {
+  try {
+    const supabase = supabaseAdmin();
+    const { data, error } = await supabase
+      .from("risk_tier")
+      .select("id, code, name, default_markup_pct")
+      .order("sort_order");
+    if (error) return [];
+    return (data ?? []) as unknown as RiskTierRow[];
+  } catch (e) {
+    console.error("listRiskTiers failed:", e);
+    return [];
+  }
+}
+
+// --- Persist bill-card edits (markup / states / status) ---
+const cardEditSchema = z.object({
+  id: z.string().uuid(),
+  markup_pct: z.number().nullable(),
+  states: z.array(z.string()).min(1).default(["ALL"]),
+  status: z.enum(["draft", "active"]).default("draft"),
+});
+
+export async function saveBillCards(cards: unknown): Promise<{ ok: boolean; error?: string }> {
+  const parsed = z.array(cardEditSchema).safeParse(cards);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input." };
+  try {
+    const supabase = supabaseAdmin();
+    for (const c of parsed.data) {
+      const { error } = await supabase
+        .from("bill_card")
+        .update({ markup_pct: c.markup_pct, states: c.states as unknown as Json, status: c.status })
+        .eq("id", c.id);
+      if (error) return { ok: false, error: error.message };
+    }
+    return { ok: true };
+  } catch (e) {
+    console.error("saveBillCards failed:", e);
+    return { ok: false, error: e instanceof Error ? e.message : "Save failed." };
+  }
+}
+
 // --- Derive draft bill cards (one per distinct confirmed tier) ---
 export type BillCard = {
   id: string;
