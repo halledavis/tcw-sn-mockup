@@ -5,7 +5,6 @@ import { useState } from "react";
 import {
   SERVICES,
   COUNTRIES,
-  currencyForCountry,
   subdivisionsFor,
   type Persona,
   type Recommendation,
@@ -50,11 +49,6 @@ export default function NewClientWizard() {
   // Page 4 — client builder profile
   const [legalName, setLegalName] = useState("");
   const [dba, setDba] = useState("");
-  const [street, setStreet] = useState("");
-  const [city, setCity] = useState("");
-  const [stateRegion, setStateRegion] = useState("");
-  const [zip, setZip] = useState("");
-  const [country, setCountry] = useState("");
   const [fein, setFein] = useState("");
   const [feinLater, setFeinLater] = useState(false);
   const [duns, setDuns] = useState("");
@@ -148,11 +142,6 @@ export default function NewClientWizard() {
     setStep("builder");
   }
 
-  function pickCountry(code: string) {
-    setCountry(code);
-    setCurrency(currencyForCountry(code)); // auto-select; still editable
-  }
-
   async function autofillDescription() {
     setAutofilling(true);
     const { description: d } = await describeAction({ website, legalName });
@@ -181,7 +170,6 @@ export default function NewClientWizard() {
     const res = await confirmIntakeAction({
       legalName,
       dba,
-      address: { street, city, state: stateRegion, zip, country },
       fein: feinLater ? "" : fein,
       duns: dunsLater ? "" : duns,
       website,
@@ -249,7 +237,14 @@ export default function NewClientWizard() {
   function addLocation() {
     if (!locForm.country && !locForm.city && !locForm.street) return;
     const l = { ...locForm };
-    setLocations((prev) => [...prev, l]);
+    setLocations((prev) => {
+      // Single primary: if this one is primary, clear the others; if nothing is
+      // primary yet, make this new one primary.
+      const base = l.is_primary ? prev.map((p) => ({ ...p, is_primary: false })) : prev;
+      const next = [...base, l];
+      if (!next.some((p) => p.is_primary)) next[next.length - 1] = { ...next[next.length - 1], is_primary: true };
+      return next;
+    });
     // Mirror the server's auto-add: surface a note when a location's country/
     // state isn't already in scope, and add it to scope so the UI stays in sync.
     const notes: string[] = [];
@@ -263,6 +258,10 @@ export default function NewClientWizard() {
     }
     if (notes.length) setScopeNotes((prev) => [...prev, ...notes]);
     setLocForm({ ...emptyLoc });
+  }
+
+  function setPrimary(index: number) {
+    setLocations((prev) => prev.map((p, i) => ({ ...p, is_primary: i === index })));
   }
 
   function addDept() {
@@ -283,6 +282,8 @@ export default function NewClientWizard() {
   async function finishScope() {
     if (!entityId) return;
     setError("");
+    if (locations.length === 0) return setError("Add at least one location, and mark one as primary.");
+    if (!locations.some((l) => l.is_primary)) return setError("Mark one location as primary.");
     setFinishing(true);
     const subdivisions = Object.entries(subs).flatMap(([cc, codes]) =>
       codes.map((code) => ({
@@ -464,7 +465,7 @@ export default function NewClientWizard() {
         {step === "builder" && (
           <div className="panel">
             <div className="steps">Step 4 of 5 · Client Details</div>
-            <h2>Client details</h2>
+            <h2>Client Details</h2>
 
             <div style={{ marginTop: 8 }}>
               <label className="small muted">Legal Entity Name *</label>
@@ -473,37 +474,6 @@ export default function NewClientWizard() {
             <div style={{ marginTop: 12 }}>
               <label className="small muted">DBA (if any)</label>
               <input style={inp} value={dba} onChange={(e) => setDba(e.target.value)} />
-            </div>
-
-            <h3 style={{ marginTop: 20 }}>Primary Office Address</h3>
-            <div>
-              <label className="small muted">Street</label>
-              <input style={inp} value={street} onChange={(e) => setStreet(e.target.value)} />
-            </div>
-            <div className="row" style={{ marginTop: 8 }}>
-              <div style={{ flex: 2 }}>
-                <label className="small muted">City</label>
-                <input style={inp} value={city} onChange={(e) => setCity(e.target.value)} />
-              </div>
-              <div style={{ flex: 1 }}>
-                <label className="small muted">State / Region</label>
-                <input style={inp} value={stateRegion} onChange={(e) => setStateRegion(e.target.value)} />
-              </div>
-              <div style={{ flex: 1 }}>
-                <label className="small muted">ZIP / Postal Code</label>
-                <input style={inp} value={zip} onChange={(e) => setZip(e.target.value)} />
-              </div>
-            </div>
-            <div style={{ marginTop: 8 }}>
-              <label className="small muted">Country</label>
-              <select style={inp} value={country} onChange={(e) => pickCountry(e.target.value)}>
-                <option value="">Select…</option>
-                {COUNTRIES.map((c) => (
-                  <option key={c.code} value={c.code}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
             </div>
 
             <h3 style={{ marginTop: 20 }}>Identifiers</h3>
@@ -589,16 +559,22 @@ export default function NewClientWizard() {
             <h3 style={{ marginTop: 16 }}>A. Core physical locations</h3>
             <p className="muted small">
               Please list or upload all office locations/worksites. You can simply provide name, city, state,
-              country for now and add address detail later.
+              country for now and add address detail later. At least one location is required, and one must be
+              marked primary.
             </p>
             {locations.length > 0 && (
               <div style={{ marginBottom: 10 }}>
                 {locations.map((l, i) => (
                   <div key={i} className="spread" style={{ padding: "4px 0", borderBottom: "1px solid var(--line)" }}>
-                    <span>
-                      {locLabel(l)} {l.is_primary && <span className="pill on">primary</span>}
+                    <span>{locLabel(l)}</span>
+                    <span className="small">
+                      {l.is_primary ? (
+                        <span className="pill on">primary</span>
+                      ) : (
+                        <button onClick={() => setPrimary(i)}>Set primary</button>
+                      )}{" "}
+                      <button onClick={() => setLocations((prev) => prev.filter((_, j) => j !== i))}>Remove</button>
                     </span>
-                    <button onClick={() => setLocations((prev) => prev.filter((_, j) => j !== i))}>Remove</button>
                   </div>
                 ))}
               </div>
