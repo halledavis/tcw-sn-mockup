@@ -950,6 +950,20 @@ export type Database = {
         }
         Returns: string
       }
+      enable_globalized_compliance: {
+        Args: { p_entity_id: string }
+        Returns: undefined
+      }
+      save_scope_and_org: {
+        Args: {
+          p_countries: Json
+          p_departments: Json
+          p_entity_id: string
+          p_locations: Json
+          p_subdivisions: Json
+        }
+        Returns: Json
+      }
     }
     Enums: {
       addendum_status:
