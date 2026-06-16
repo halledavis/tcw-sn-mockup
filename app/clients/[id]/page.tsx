@@ -6,6 +6,8 @@ export const dynamic = "force-dynamic";
 
 type ServiceRow = { status: string; source: string; service: { code: string; name: string } | null };
 type ModuleRow = { enabled: boolean; source: string | null; module: { code: string; name: string } | null };
+type ContactRow = { kind: string; first_name: string; last_name: string; email: string; phone: string | null };
+type Address = { street?: string; city?: string; state?: string; zip?: string; country?: string } | null;
 
 export default async function ClientSummary({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -13,19 +15,27 @@ export default async function ClientSummary({ params }: { params: Promise<{ id: 
 
   const { data: entity } = await supabase
     .from("entity")
-    .select("id, legal_name, kind, status, default_eor_id")
+    .select(
+      "id, legal_name, dba_name, kind, status, default_eor_id, address, fein, duns, website, default_currency, description, logo_url",
+    )
     .eq("id", id)
     .single();
 
   if (!entity) notFound();
 
-  const [{ data: svcData }, { data: modData }] = await Promise.all([
+  const [{ data: svcData }, { data: modData }, { data: contactData }] = await Promise.all([
     supabase.from("entity_service").select("status, source, service:service_id(code, name)").eq("entity_id", id),
     supabase.from("entity_module").select("enabled, source, module:module_id(code, name)").eq("entity_id", id),
+    supabase.from("entity_contact").select("kind, first_name, last_name, email, phone").eq("entity_id", id),
   ]);
 
   const services = (svcData ?? []) as unknown as ServiceRow[];
   const modules = (modData ?? []) as unknown as ModuleRow[];
+  const contacts = (contactData ?? []) as unknown as ContactRow[];
+  const addr = (entity.address ?? null) as Address;
+  const addrLine = addr
+    ? [addr.street, addr.city, addr.state, addr.zip, addr.country].filter(Boolean).join(", ")
+    : "";
 
   let eorName: string | null = null;
   if (entity.default_eor_id) {
@@ -46,6 +56,36 @@ export default async function ClientSummary({ params }: { params: Promise<{ id: 
           <span className="pill on">{entity.status}</span>
           <span className="pill">{entity.kind}</span> Prospect provisioned from AI intake.
         </p>
+
+        <div className="panel">
+          <h2>Client profile</h2>
+          {entity.logo_url && (
+            <img src={entity.logo_url} alt="logo" style={{ height: 48, borderRadius: 6, border: "1px solid var(--line)", marginBottom: 8 }} />
+          )}
+          <div className="small">
+            {entity.dba_name && <div className="spread" style={{ padding: "4px 0" }}><span className="muted">DBA</span><span>{entity.dba_name}</span></div>}
+            {addrLine && <div className="spread" style={{ padding: "4px 0" }}><span className="muted">Office</span><span>{addrLine}</span></div>}
+            {entity.fein && <div className="spread" style={{ padding: "4px 0" }}><span className="muted">FEIN</span><span>{entity.fein}</span></div>}
+            {entity.duns && <div className="spread" style={{ padding: "4px 0" }}><span className="muted">DUNS</span><span>{entity.duns}</span></div>}
+            {entity.website && <div className="spread" style={{ padding: "4px 0" }}><span className="muted">Website</span><span>{entity.website}</span></div>}
+            {entity.default_currency && <div className="spread" style={{ padding: "4px 0" }}><span className="muted">Currency</span><span>{entity.default_currency}</span></div>}
+          </div>
+          {entity.description && <p className="muted" style={{ marginTop: 8 }}>{entity.description}</p>}
+        </div>
+
+        <div className="panel">
+          <h2>Contacts</h2>
+          {contacts.length === 0 && <p className="muted">None.</p>}
+          {contacts.map((c, i) => (
+            <div key={i} className="spread" style={{ padding: "6px 0", borderBottom: "1px solid var(--line)" }}>
+              <span>
+                {c.first_name} {c.last_name}{" "}
+                <span className="pill">{c.kind === "signatory" ? "Signatory" : "Primary"}</span>
+              </span>
+              <span className="small muted">{c.email}{c.phone ? ` · ${c.phone}` : ""}</span>
+            </div>
+          ))}
+        </div>
 
         <div className="panel">
           <h2>Provisioned services</h2>

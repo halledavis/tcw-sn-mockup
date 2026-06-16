@@ -138,43 +138,61 @@ export type Database = {
           address: Json | null
           created_at: string
           dba_name: string | null
+          default_currency: string | null
           default_eor_id: string | null
+          description: string | null
+          duns: string | null
+          fein: string | null
           id: string
           is_billable_entity: boolean
           is_billing_entity: boolean
           is_default_eor: boolean
           kind: Database["public"]["Enums"]["entity_kind"]
           legal_name: string
+          logo_url: string | null
           parent_id: string | null
           status: Database["public"]["Enums"]["entity_status"]
+          website: string | null
         }
         Insert: {
           address?: Json | null
           created_at?: string
           dba_name?: string | null
+          default_currency?: string | null
           default_eor_id?: string | null
+          description?: string | null
+          duns?: string | null
+          fein?: string | null
           id?: string
           is_billable_entity?: boolean
           is_billing_entity?: boolean
           is_default_eor?: boolean
           kind: Database["public"]["Enums"]["entity_kind"]
           legal_name: string
+          logo_url?: string | null
           parent_id?: string | null
           status?: Database["public"]["Enums"]["entity_status"]
+          website?: string | null
         }
         Update: {
           address?: Json | null
           created_at?: string
           dba_name?: string | null
+          default_currency?: string | null
           default_eor_id?: string | null
+          description?: string | null
+          duns?: string | null
+          fein?: string | null
           id?: string
           is_billable_entity?: boolean
           is_billing_entity?: boolean
           is_default_eor?: boolean
           kind?: Database["public"]["Enums"]["entity_kind"]
           legal_name?: string
+          logo_url?: string | null
           parent_id?: string | null
           status?: Database["public"]["Enums"]["entity_status"]
+          website?: string | null
         }
         Relationships: [
           {
@@ -187,6 +205,47 @@ export type Database = {
           {
             foreignKeyName: "entity_parent_id_fkey"
             columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "entity"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      entity_contact: {
+        Row: {
+          created_at: string
+          email: string
+          entity_id: string
+          first_name: string
+          id: string
+          kind: Database["public"]["Enums"]["contact_kind"]
+          last_name: string
+          phone: string | null
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          entity_id: string
+          first_name: string
+          id?: string
+          kind: Database["public"]["Enums"]["contact_kind"]
+          last_name: string
+          phone?: string | null
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          entity_id?: string
+          first_name?: string
+          id?: string
+          kind?: Database["public"]["Enums"]["contact_kind"]
+          last_name?: string
+          phone?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "entity_contact_entity_id_fkey"
+            columns: ["entity_id"]
             isOneToOne: false
             referencedRelation: "entity"
             referencedColumns: ["id"]
@@ -696,6 +755,27 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      create_client_from_intake: {
+        Args: {
+          p_address: Json
+          p_brief: string
+          p_contacts: Json
+          p_currency: string
+          p_dba: string
+          p_description: string
+          p_duns: string
+          p_fein: string
+          p_inferred_signals: Json
+          p_legal_name: string
+          p_logo_url: string
+          p_persona: Database["public"]["Enums"]["intake_persona"]
+          p_service_codes: string[]
+          p_sources: Json
+          p_transcript: Json
+          p_website: string
+        }
+        Returns: string
+      }
       create_prospect_from_intake: {
         Args: {
           p_brief: string
@@ -719,6 +799,7 @@ export type Database = {
         | "worker"
       app_user_status: "active" | "inactive" | "invited"
       billing_model: "markup" | "bill_rate"
+      contact_kind: "signatory" | "primary"
       entity_kind: "client" | "tcw" | "eor" | "agency" | "vendor" | "msp"
       entity_service_source: "ai" | "manual"
       entity_service_status: "recommended" | "selected" | "active"
@@ -883,6 +964,7 @@ export const Constants = {
       ],
       app_user_status: ["active", "inactive", "invited"],
       billing_model: ["markup", "bill_rate"],
+      contact_kind: ["signatory", "primary"],
       entity_kind: ["client", "tcw", "eor", "agency", "vendor", "msp"],
       entity_service_source: ["ai", "manual"],
       entity_service_status: ["recommended", "selected", "active"],

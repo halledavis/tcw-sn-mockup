@@ -37,6 +37,27 @@ export const serviceName = (code: string) =>
     ? SERVICES.find((s) => s.code === code)!.name
     : code;
 
+// Countries offered in the builder; default currency auto-selects from country.
+export const COUNTRIES: { code: string; name: string; currency: string }[] = [
+  { code: "US", name: "United States", currency: "USD" },
+  { code: "CA", name: "Canada", currency: "CAD" },
+  { code: "GB", name: "United Kingdom", currency: "GBP" },
+  { code: "MX", name: "Mexico", currency: "MXN" },
+  { code: "DE", name: "Germany", currency: "EUR" },
+  { code: "FR", name: "France", currency: "EUR" },
+  { code: "IE", name: "Ireland", currency: "EUR" },
+  { code: "AU", name: "Australia", currency: "AUD" },
+  { code: "IN", name: "India", currency: "INR" },
+  { code: "JP", name: "Japan", currency: "JPY" },
+  { code: "BR", name: "Brazil", currency: "BRL" },
+  { code: "SG", name: "Singapore", currency: "SGD" },
+  { code: "PH", name: "Philippines", currency: "PHP" },
+];
+
+export function currencyForCountry(code: string): string {
+  return COUNTRIES.find((c) => c.code === code)?.currency ?? "";
+}
+
 export type Persona = "cra" | "prospect";
 
 export type TranscriptTurn = { role: "ai" | "user"; content: string };

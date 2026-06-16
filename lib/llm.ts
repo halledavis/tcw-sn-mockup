@@ -18,7 +18,27 @@ function client() {
 
 const MODEL = () => process.env.OPENAI_MODEL || "gpt-4o-mini";
 
-const QUESTION_CAP = 6;
+// Ask at least MIN_QUESTIONS (so the synthesizer has real signal to work with)
+// and at most QUESTION_CAP (so the flow always terminates).
+const MIN_QUESTIONS = 4;
+const QUESTION_CAP = 7;
+
+// Safety net: if the model tries to finish before the minimum, fall back to the
+// next uncovered signal-area question so the conversation keeps going.
+const FALLBACK_QUESTIONS = [
+  "Are you bringing your own workers, do you want us to source candidates, or are you managing multiple staffing agencies? If agencies, roughly how many?",
+  "Will these be W-2 employees, 1099 independent contractors, or a mix?",
+  "Where are the workers located — which country or countries?",
+  "Do you need someone to legally employ the workers (act as the Employer of Record), or do you already employ them yourselves?",
+  "Is this ongoing staffing, or project / statement-of-work based?",
+  "Roughly how many workers and over what timeframe?",
+];
+
+function fallbackQuestion(transcript: TranscriptTurn[]): string {
+  const asked = new Set(transcript.filter((t) => t.role === "ai").map((t) => t.content));
+  for (const q of FALLBACK_QUESTIONS) if (!asked.has(q)) return q;
+  return FALLBACK_QUESTIONS[FALLBACK_QUESTIONS.length - 1];
+}
 
 // Models are told to return raw JSON (and we use JSON mode). Parse safely: try
 // the whole string, then salvage the first {...} object if needed.
@@ -125,6 +145,30 @@ function transcriptToText(brief: string, transcript: TranscriptTurn[]): string {
   return lines.join("\n");
 }
 
+// Best-effort company description for the builder. Note: no live web fetch
+// available here, so this infers from the name/domain — fine for a mockup.
+export async function describeFromWebsite(website: string, legalName: string): Promise<string> {
+  if (!website.trim() && !legalName.trim()) return "";
+  try {
+    const resp = await client().chat.completions.create({
+      model: MODEL(),
+      max_tokens: 160,
+      messages: [
+        {
+          role: "system",
+          content:
+            "Write a concise 1-2 sentence company description for a staffing/HR client profile. Plain text only, no preamble or quotes. If unsure what the company does, infer reasonably from its name and domain and keep it generic.",
+        },
+        { role: "user", content: `Company: ${legalName || "(unknown)"}\nWebsite: ${website || "(none)"}` },
+      ],
+    });
+    return (resp.choices[0]?.message?.content ?? "").trim();
+  } catch (e) {
+    console.error("describeFromWebsite failed:", e);
+    return "";
+  }
+}
+
 export type InterviewStep = { next_question: string } | { done: true };
 
 // 1) Interviewer — picks the next best question, or signals done.
@@ -135,29 +179,38 @@ export async function runInterviewer(
 ): Promise<InterviewStep> {
   const answered = transcript.filter((t) => t.role === "user").length;
   if (answered >= QUESTION_CAP) return { done: true };
+  const needMore = answered < MIN_QUESTIONS; // still below the minimum
 
   const system = [
     "You are an intake interviewer for StaffingNation, an HR/staffing solution engine.",
-    "Your job: ask the FEWEST questions needed to map this client to the right services, then stop.",
+    "Interview the client conversationally to understand their situation BEFORE recommending anything. Ask thorough, probing questions — one at a time — and build on their answers.",
     personaStance(persona),
     catalogContext(),
     SIGNAL_DEFINITIONS,
-    `Ask ONE open, adaptive question at a time — pick the single most valuable next question given what you already know. Do not re-ask what's already answered. Stop as soon as you can confidently map them to one or more services. Soft cap: about ${QUESTION_CAP} questions total; you have asked ${answered} so far.`,
-    'Respond with RAW JSON only — no prose, no markdown. Either {"next_question": "..."} to ask, or {"done": true} when you have enough to recommend services.',
+    `Ask ONE open question at a time. Across the conversation, cover EACH signal area above: sourcing model (and how many agencies), worker type (W-2 vs 1099), geography/countries, whether they need someone to employ the workers, and ongoing-vs-project. Build on what they said — go a level deeper when an answer is vague. Do NOT re-ask what's already answered. Ask at least ${MIN_QUESTIONS} questions and do not finish early; you have asked ${answered} so far (hard cap ${QUESTION_CAP}). Only set done=true once you've genuinely covered the key areas.`,
+    'Respond as JSON. To ask, set {"done": false, "next_question": "..."}. Only when you have thoroughly covered the areas, set {"done": true, "next_question": null}.',
   ].join("\n\n");
 
   try {
     const raw = await jsonChat(system, transcriptToText(brief, transcript), 600, INTERVIEW_SCHEMA);
     const parsed = safeJson<{ done?: boolean; next_question?: string | null }>(raw);
-    if (!parsed) return { done: true };
-    if (parsed.done) return { done: true };
-    if (typeof parsed.next_question === "string" && parsed.next_question.trim()) {
-      return { next_question: parsed.next_question };
-    }
+
+    const modelQuestion =
+      parsed && typeof parsed.next_question === "string" && parsed.next_question.trim()
+        ? parsed.next_question.trim()
+        : null;
+
+    // Below the minimum: keep going no matter what the model says.
+    if (needMore) return { next_question: modelQuestion ?? fallbackQuestion(transcript) };
+
+    // At/above the minimum: respect the model.
+    if (!parsed || parsed.done) return { done: true };
+    if (modelQuestion) return { next_question: modelQuestion };
     return { done: true };
   } catch (e) {
     console.error("runInterviewer failed:", e);
-    return { done: true };
+    // Don't strand the user below the minimum on a transient error.
+    return needMore ? { next_question: fallbackQuestion(transcript) } : { done: true };
   }
 }
 

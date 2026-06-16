@@ -43,6 +43,7 @@ a { color: var(--accent); }
   padding: 24px;
   margin-top: 16px;
 }
+.panel.mock { background: var(--mock); }
 
 h1 { font-size: 24px; margin: 0 0 4px; }
 h2 { font-size: 18px; margin: 0 0 12px; }
