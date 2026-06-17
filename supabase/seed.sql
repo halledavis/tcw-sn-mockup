@@ -190,3 +190,20 @@ from (values
 where not exists (
   select 1 from public.client_job_title c where c.entity_id = v.entity_id and c.title = v.title
 );
+
+-- JD-level pay range + type per title (by risk tier), for any title missing it.
+-- Mirrors the order_pay_rate migration so a fresh db reset stays consistent.
+update public.client_job_title cjt
+set pay_type = v.pt::public.pay_type, pay_rate_min = v.lo, pay_rate_max = v.hi
+from (
+  select rt.id as tier_id, x.pt, x.lo, x.hi
+  from public.risk_tier rt
+  join (values
+    ('tier_0', 'salary', 70000, 140000),
+    ('tier_1', 'hourly', 22, 35),
+    ('tier_2', 'hourly', 18, 28),
+    ('tier_3', 'hourly', 25, 42),
+    ('tier_4', 'hourly', 24, 40)
+  ) as x(code, pt, lo, hi) on x.code = rt.code
+) v
+where cjt.risk_tier_id = v.tier_id and cjt.pay_rate_min is null;

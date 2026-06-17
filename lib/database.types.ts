@@ -225,6 +225,9 @@ export type Database = {
           entity_id: string
           id: string
           needs_review: boolean
+          pay_rate_max: number | null
+          pay_rate_min: number | null
+          pay_type: Database["public"]["Enums"]["pay_type"] | null
           risk_tier_id: string | null
           status: Database["public"]["Enums"]["job_title_status"]
           title: string
@@ -237,6 +240,9 @@ export type Database = {
           entity_id: string
           id?: string
           needs_review?: boolean
+          pay_rate_max?: number | null
+          pay_rate_min?: number | null
+          pay_type?: Database["public"]["Enums"]["pay_type"] | null
           risk_tier_id?: string | null
           status?: Database["public"]["Enums"]["job_title_status"]
           title: string
@@ -249,6 +255,9 @@ export type Database = {
           entity_id?: string
           id?: string
           needs_review?: boolean
+          pay_rate_max?: number | null
+          pay_rate_min?: number | null
+          pay_type?: Database["public"]["Enums"]["pay_type"] | null
           risk_tier_id?: string | null
           status?: Database["public"]["Enums"]["job_title_status"]
           title?: string
@@ -797,6 +806,11 @@ export type Database = {
           location: string | null
           markup_pct: number | null
           num_workers: number
+          pay_mode: Database["public"]["Enums"]["pay_mode"] | null
+          pay_rate: number | null
+          pay_rate_max: number | null
+          pay_rate_min: number | null
+          pay_type: Database["public"]["Enums"]["pay_type"] | null
           reporting_location_id: string | null
           source_type: Database["public"]["Enums"]["source_type"]
           sow_ref: string | null
@@ -832,6 +846,11 @@ export type Database = {
           location?: string | null
           markup_pct?: number | null
           num_workers?: number
+          pay_mode?: Database["public"]["Enums"]["pay_mode"] | null
+          pay_rate?: number | null
+          pay_rate_max?: number | null
+          pay_rate_min?: number | null
+          pay_type?: Database["public"]["Enums"]["pay_type"] | null
           reporting_location_id?: string | null
           source_type: Database["public"]["Enums"]["source_type"]
           sow_ref?: string | null
@@ -867,6 +886,11 @@ export type Database = {
           location?: string | null
           markup_pct?: number | null
           num_workers?: number
+          pay_mode?: Database["public"]["Enums"]["pay_mode"] | null
+          pay_rate?: number | null
+          pay_rate_max?: number | null
+          pay_rate_min?: number | null
+          pay_type?: Database["public"]["Enums"]["pay_type"] | null
           reporting_location_id?: string | null
           source_type?: Database["public"]["Enums"]["source_type"]
           sow_ref?: string | null
@@ -1011,6 +1035,41 @@ export type Database = {
           name?: string
         }
         Relationships: []
+      }
+      order_geo_pay_range: {
+        Row: {
+          created_at: string
+          geo_area: string
+          id: string
+          job_order_id: string
+          pay_rate_max: number | null
+          pay_rate_min: number | null
+        }
+        Insert: {
+          created_at?: string
+          geo_area: string
+          id?: string
+          job_order_id: string
+          pay_rate_max?: number | null
+          pay_rate_min?: number | null
+        }
+        Update: {
+          created_at?: string
+          geo_area?: string
+          id?: string
+          job_order_id?: string
+          pay_rate_max?: number | null
+          pay_rate_min?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "order_geo_pay_range_job_order_id_fkey"
+            columns: ["job_order_id"]
+            isOneToOne: false
+            referencedRelation: "job_order"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       pay_rate_rule: {
         Row: {
@@ -1223,6 +1282,9 @@ export type Database = {
           entity_id: string
           id: string
           needs_review: boolean
+          pay_rate_max: number | null
+          pay_rate_min: number | null
+          pay_type: Database["public"]["Enums"]["pay_type"] | null
           risk_tier_id: string | null
           status: Database["public"]["Enums"]["job_title_status"]
           title: string
@@ -1291,6 +1353,7 @@ export type Database = {
         | "draft"
       job_status: "offered" | "active" | "ended"
       job_title_status: "ai_suggested" | "confirmed" | "needs_review"
+      pay_mode: "fixed" | "range" | "geo_ranges"
       pay_type: "hourly" | "salary"
       scope_level:
         | "system"
@@ -1475,6 +1538,7 @@ export const Constants = {
       ],
       job_status: ["offered", "active", "ended"],
       job_title_status: ["ai_suggested", "confirmed", "needs_review"],
+      pay_mode: ["fixed", "range", "geo_ranges"],
       pay_type: ["hourly", "salary"],
       scope_level: [
         "system",

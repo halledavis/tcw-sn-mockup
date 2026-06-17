@@ -10,6 +10,7 @@ import {
   listClientJobTitles,
   listClientLocations,
   listClientScopeCountries,
+  listClientScopeAreas,
   type OrderClient,
   type DepartmentRow,
   type ClientTitleRow,
@@ -76,6 +77,7 @@ const STEPS: { key: string; label: string; isActive: (s: FlowState) => boolean }
   { key: "source", label: "Fill Source Strategy", isActive: (s) => effectiveFulfillment(s) === "worker" },
   { key: "engagement", label: "Engagement details", isActive: (s) => effectiveFulfillment(s) === "worker" },
   { key: "location", label: "Location details", isActive: (s) => effectiveFulfillment(s) === "worker" },
+  { key: "pay", label: "Pay rate", isActive: (s) => effectiveFulfillment(s) === "worker" },
   { key: "flow", label: "Order Intake flow", isActive: () => true },
 ];
 
@@ -137,6 +139,15 @@ export default function NewOrder() {
   const [savingLocation, setSavingLocation] = useState(false);
   const [locationError, setLocationError] = useState("");
 
+  // Pay-rate step.
+  const [scopeAreas, setScopeAreas] = useState<string[]>([]);
+  const [payRate, setPayRate] = useState("");
+  const [rangeMin, setRangeMin] = useState("");
+  const [rangeMax, setRangeMax] = useState("");
+  const [geoRows, setGeoRows] = useState<{ area: string; min: string; max: string }[]>([{ area: "", min: "", max: "" }]);
+  const [savingPay, setSavingPay] = useState(false);
+  const [payError, setPayError] = useState("");
+
   const state: FlowState = { persona, fulfillment };
   const visible = STEPS.filter((s) => s.isActive(state));
   const idx = Math.min(stepIndex, visible.length - 1);
@@ -159,6 +170,7 @@ export default function NewOrder() {
     listClientJobTitles(clientId).then(setTitles);
     listClientLocations(clientId).then(setLocations);
     listClientScopeCountries(clientId).then(setScopeCountries);
+    listClientScopeAreas(clientId).then(setScopeAreas);
   }, [clientId]);
 
   // Persist a draft order once, as soon as the flow reaches the first post-
@@ -225,6 +237,66 @@ export default function NewOrder() {
     });
     setSavingLocation(false);
     if (!res.ok) return setLocationError(res.error ?? "Save failed.");
+    goNext();
+  }
+
+  // --- Pay rate ---
+  const selectedTitle = titles.find((t) => t.id === jobTitleId) ?? null;
+  const payType = selectedTitle?.pay_type ?? null;
+  const seedMin = selectedTitle?.pay_rate_min ?? null;
+  const seedMax = selectedTitle?.pay_rate_max ?? null;
+  const payUnit = payType === "salary" ? "$/yr" : "$/hr";
+  // Mode is derived: known candidate -> a single fixed rate; otherwise remote/
+  // open work spans geographies (per-geo ranges), else a single range.
+  const payMode: "fixed" | "range" | "geo_ranges" = candidateKnown
+    ? "fixed"
+    : workArrangement === "remote" || workArrangement === "open"
+      ? "geo_ranges"
+      : "range";
+
+  // Prefill the range inputs from the title's seeded JD-level range on entry.
+  useEffect(() => {
+    if (current.key !== "pay") return;
+    setRangeMin((prev) => (prev === "" && seedMin != null ? String(seedMin) : prev));
+    setRangeMax((prev) => (prev === "" && seedMax != null ? String(seedMax) : prev));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current.key]);
+
+  const payValid = (() => {
+    if (payMode === "fixed") {
+      const r = Number(payRate);
+      return payRate !== "" && (seedMin == null || r >= seedMin) && (seedMax == null || r <= seedMax);
+    }
+    if (payMode === "range") {
+      return rangeMin !== "" && rangeMax !== "" && Number(rangeMax) >= Number(rangeMin);
+    }
+    return geoRows.length > 0 && geoRows.every((g) => g.area && g.min !== "" && g.max !== "" && Number(g.max) >= Number(g.min));
+  })();
+
+  function setGeoRow(i: number, patch: Partial<{ area: string; min: string; max: string }>) {
+    setGeoRows((prev) => prev.map((g, j) => (j === i ? { ...g, ...patch } : g)));
+  }
+
+  async function savePay() {
+    if (!draftId) return;
+    setPayError("");
+    setSavingPay(true);
+    const base = { payMode, payType };
+    const payload =
+      payMode === "fixed"
+        ? { ...base, payRate: Number(payRate), payRateMin: null, payRateMax: null, geoRanges: [] }
+        : payMode === "range"
+          ? { ...base, payRate: null, payRateMin: Number(rangeMin), payRateMax: Number(rangeMax), geoRanges: [] }
+          : {
+              ...base,
+              payRate: null,
+              payRateMin: null,
+              payRateMax: null,
+              geoRanges: geoRows.map((g) => ({ geoArea: g.area, payRateMin: Number(g.min), payRateMax: Number(g.max) })),
+            };
+    const res = await updateDraftOrder(draftId, payload);
+    setSavingPay(false);
+    if (!res.ok) return setPayError(res.error ?? "Save failed.");
     goNext();
   }
 
@@ -479,7 +551,86 @@ export default function NewOrder() {
           </div>
         )}
 
-        {/* Screen 6 — order flow */}
+        {/* Screen 6 — pay rate (worker requisitions only) */}
+        {current.key === "pay" && (
+          <div className="panel">
+            <div className="steps">Step {idx}</div>
+            <h2>Pay rate</h2>
+            {!selectedTitle && <p className="muted small">Pick a job title on the engagement step first.</p>}
+            {selectedTitle && (
+              <>
+                <p className="muted small">
+                  {selectedTitle.title} · JD range{" "}
+                  <strong>
+                    {seedMin != null ? seedMin.toLocaleString() : "—"}–{seedMax != null ? seedMax.toLocaleString() : "—"} {payUnit}
+                  </strong>
+                </p>
+
+                {payMode === "fixed" && (
+                  <div style={{ marginTop: 12 }}>
+                    <label className="small muted">Pay rate ({payUnit}) — must be within the JD range *</label>
+                    <input style={inp} type="number" value={payRate} onChange={(e) => setPayRate(e.target.value)} placeholder={seedMin != null ? String(seedMin) : ""} />
+                    {payRate !== "" && !payValid && (
+                      <div className="err">Rate must be between {seedMin}–{seedMax} {payUnit}.</div>
+                    )}
+                  </div>
+                )}
+
+                {payMode === "range" && (
+                  <div className="row" style={{ marginTop: 12 }}>
+                    <div style={{ flex: 1 }}>
+                      <label className="small muted">Min ({payUnit})</label>
+                      <input style={inp} type="number" value={rangeMin} onChange={(e) => setRangeMin(e.target.value)} />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <label className="small muted">Max ({payUnit})</label>
+                      <input style={inp} type="number" value={rangeMax} onChange={(e) => setRangeMax(e.target.value)} />
+                    </div>
+                  </div>
+                )}
+
+                {payMode === "geo_ranges" && (
+                  <div style={{ marginTop: 12 }}>
+                    <label className="small muted">Pay range per geography ({payUnit})</label>
+                    {geoRows.map((g, i) => (
+                      <div key={i} className="row" style={{ marginTop: 6 }}>
+                        <div style={{ flex: 2 }}>
+                          <select style={inp} value={g.area} onChange={(e) => setGeoRow(i, { area: e.target.value })}>
+                            <option value="">Select area…</option>
+                            {scopeAreas.map((a) => (
+                              <option key={a} value={a}>{a}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <input style={inp} type="number" placeholder="min" value={g.min} onChange={(e) => setGeoRow(i, { min: e.target.value })} />
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <input style={inp} type="number" placeholder="max" value={g.max} onChange={(e) => setGeoRow(i, { max: e.target.value })} />
+                        </div>
+                        <button style={{ marginTop: 4 }} onClick={() => setGeoRows((prev) => (prev.length > 1 ? prev.filter((_, j) => j !== i) : prev))}>✕</button>
+                      </div>
+                    ))}
+                    <button style={{ marginTop: 8 }} onClick={() => setGeoRows((prev) => [...prev, { area: "", min: "", max: "" }])}>+ Add geography</button>
+                    {scopeAreas.length === 0 && (
+                      <div className="muted small" style={{ marginTop: 4 }}>No in-scope geographies for this client.</div>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+
+            {payError && <div className="err">{payError}</div>}
+            <div className="row" style={{ marginTop: 16 }}>
+              <button onClick={goBack}>← Back</button>
+              <button className="primary" disabled={!payValid || savingPay || !draftId || !selectedTitle} onClick={savePay}>
+                {savingPay ? "Saving…" : "Continue →"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Screen 7 — order flow */}
         {current.key === "flow" && (
           <div className="panel">
             <h2>Order Intake flow</h2>

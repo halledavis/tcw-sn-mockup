@@ -29,7 +29,13 @@ export async function listOrderClients(): Promise<OrderClient[]> {
 
 // --- Engagement-step dropdowns: the selected client's departments + titles ---
 export type DepartmentRow = { id: string; name: string };
-export type ClientTitleRow = { id: string; title: string };
+export type ClientTitleRow = {
+  id: string;
+  title: string;
+  pay_type: Database["public"]["Enums"]["pay_type"] | null;
+  pay_rate_min: number | null;
+  pay_rate_max: number | null;
+};
 
 export async function listClientDepartments(entityId: string): Promise<DepartmentRow[]> {
   if (!z.string().uuid().safeParse(entityId).success) return [];
@@ -54,7 +60,7 @@ export async function listClientJobTitles(entityId: string): Promise<ClientTitle
     const supabase = supabaseAdmin();
     const { data, error } = await supabase
       .from("client_job_title")
-      .select("id, title")
+      .select("id, title, pay_type, pay_rate_min, pay_rate_max")
       .eq("entity_id", entityId)
       .order("title");
     if (error) return [];
@@ -104,6 +110,27 @@ export async function listClientScopeCountries(entityId: string): Promise<string
     return (data ?? []).map((r) => r.country_code);
   } catch (e) {
     console.error("listClientScopeCountries failed:", e);
+    return [];
+  }
+}
+
+// Geographic-area options for geo_ranges pay: the client's in-scope countries
+// plus subdivisions, as labels (e.g. "US", "US — TX", "CA — ON").
+export async function listClientScopeAreas(entityId: string): Promise<string[]> {
+  if (!z.string().uuid().safeParse(entityId).success) return [];
+  try {
+    const supabase = supabaseAdmin();
+    const [{ data: countries }, { data: subs }] = await Promise.all([
+      supabase.from("client_country_scope").select("country_code").eq("entity_id", entityId).order("country_code"),
+      supabase.from("client_subdivision_scope").select("country_code, subdivision_code").eq("entity_id", entityId).order("country_code"),
+    ]);
+    const areas = [
+      ...(countries ?? []).map((c) => c.country_code),
+      ...(subs ?? []).map((s) => `${s.country_code} — ${s.subdivision_code}`),
+    ];
+    return Array.from(new Set(areas));
+  } catch (e) {
+    console.error("listClientScopeAreas failed:", e);
     return [];
   }
 }
@@ -207,6 +234,22 @@ const updateSchema = z.object({
   // location details
   workArrangement: z.enum(["onsite", "remote", "hybrid", "open"]).nullable().optional(),
   reportingLocationId: z.string().uuid().nullable().optional(),
+  // pay rate
+  payMode: z.enum(["fixed", "range", "geo_ranges"]).nullable().optional(),
+  payType: z.enum(["hourly", "salary"]).nullable().optional(),
+  payRate: z.number().nonnegative().nullable().optional(),
+  payRateMin: z.number().nonnegative().nullable().optional(),
+  payRateMax: z.number().nonnegative().nullable().optional(),
+  // geo_ranges: when present, the order's child rows are replaced wholesale.
+  geoRanges: z
+    .array(
+      z.object({
+        geoArea: z.string().trim().min(1),
+        payRateMin: z.number().nonnegative().nullable().default(null),
+        payRateMax: z.number().nonnegative().nullable().default(null),
+      }),
+    )
+    .optional(),
 });
 export type UpdateOrderPayload = z.input<typeof updateSchema>;
 
@@ -239,9 +282,31 @@ export async function updateDraftOrder(id: string, input: UpdateOrderPayload): P
     if (p.endDate !== undefined) patch.end_date = p.endDate;
     if (p.workArrangement !== undefined) patch.work_arrangement = p.workArrangement;
     if (p.reportingLocationId !== undefined) patch.reporting_location_id = p.reportingLocationId;
-    if (Object.keys(patch).length === 0) return { ok: true };
-    const { error } = await supabase.from("job_order").update(patch).eq("id", idCheck.data);
-    if (error) return { ok: false, error: error.message };
+    if (p.payMode !== undefined) patch.pay_mode = p.payMode;
+    if (p.payType !== undefined) patch.pay_type = p.payType;
+    if (p.payRate !== undefined) patch.pay_rate = p.payRate;
+    if (p.payRateMin !== undefined) patch.pay_rate_min = p.payRateMin;
+    if (p.payRateMax !== undefined) patch.pay_rate_max = p.payRateMax;
+    if (Object.keys(patch).length > 0) {
+      const { error } = await supabase.from("job_order").update(patch).eq("id", idCheck.data);
+      if (error) return { ok: false, error: error.message };
+    }
+    // geo_ranges: replace the order's child rows wholesale (delete + insert).
+    if (p.geoRanges !== undefined) {
+      const del = await supabase.from("order_geo_pay_range").delete().eq("job_order_id", idCheck.data);
+      if (del.error) return { ok: false, error: del.error.message };
+      if (p.geoRanges.length > 0) {
+        const ins = await supabase.from("order_geo_pay_range").insert(
+          p.geoRanges.map((g) => ({
+            job_order_id: idCheck.data,
+            geo_area: g.geoArea,
+            pay_rate_min: g.payRateMin,
+            pay_rate_max: g.payRateMax,
+          })),
+        );
+        if (ins.error) return { ok: false, error: ins.error.message };
+      }
+    }
     return { ok: true };
   } catch (e) {
     console.error("updateDraftOrder failed:", e);
