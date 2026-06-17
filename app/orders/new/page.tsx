@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { createDraftOrder, listOrderClients, type OrderClient } from "./actions";
 
 type OrderPersona = "eor" | "vms" | "staffing" | "agent" | "1099s";
 type Fulfillment = "agent" | "worker" | "project";
@@ -68,10 +69,39 @@ export default function NewOrder() {
   const [fulfillment, setFulfillment] = useState<Fulfillment | null>(null);
   const [source, setSource] = useState<Source | null>(null);
 
+  // Client to attach the order to (supplies entity_id).
+  const [clients, setClients] = useState<OrderClient[]>([]);
+  const [clientId, setClientId] = useState("");
+
+  // Persisted draft.
+  const [draftId, setDraftId] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState("");
+
   const state: FlowState = { persona, fulfillment };
   const visible = STEPS.filter((s) => s.isActive(state));
   const idx = Math.min(stepIndex, visible.length - 1);
   const current = visible[idx];
+
+  useEffect(() => {
+    listOrderClients().then(setClients);
+  }, []);
+
+  // When the flow reaches the (placeholder) flow screen, persist a draft order
+  // once, using the effective fulfillment + chosen fill source.
+  useEffect(() => {
+    if (current.key !== "flow" || draftId || creating || !clientId || !persona) return;
+    const eff = effectiveFulfillment(state);
+    if (!eff) return;
+    setCreating(true);
+    setCreateError("");
+    createDraftOrder({ entityId: clientId, fulfillment: eff, fillSource: source }).then((res) => {
+      setCreating(false);
+      if (res.ok) setDraftId(res.id);
+      else setCreateError(res.error);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current.key]);
 
   const options = persona ? fulfillmentsFor(persona) : [];
   const sourceOptions = persona ? sourcesFor(persona) : [];
@@ -111,7 +141,24 @@ export default function NewOrder() {
                 <div className="muted small">{p.blurb}</div>
               </button>
             ))}
-            <button className="primary" disabled={!persona} onClick={goNext}>
+
+            <div style={{ marginTop: 16 }}>
+              <label className="small muted">Attach order to client</label>
+              <select
+                value={clientId}
+                onChange={(e) => setClientId(e.target.value)}
+                style={{ width: "100%", padding: 10, marginTop: 4, border: "1px solid var(--line)", borderRadius: 8, font: "inherit" }}
+              >
+                <option value="">Select a client…</option>
+                {clients.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.legal_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <button className="primary" disabled={!persona || !clientId} onClick={goNext} style={{ marginTop: 16 }}>
               Continue →
             </button>
           </div>
@@ -173,6 +220,9 @@ export default function NewOrder() {
         {current.key === "flow" && (
           <div className="panel">
             <h2>Order Intake flow</h2>
+            {creating && <p className="muted small">Creating draft order…</p>}
+            {draftId && <p className="small" style={{ color: "var(--accent)" }}>✓ Draft order {draftId} created</p>}
+            {createError && <div className="err">{createError}</div>}
             <p className="muted small">Coming soon.</p>
             <div className="row" style={{ marginTop: 16 }}>
               <button onClick={goBack}>← Back</button>

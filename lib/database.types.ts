@@ -778,11 +778,16 @@ export type Database = {
           bill_rate: number | null
           billing_entity_id: string | null
           billing_model: Database["public"]["Enums"]["billing_model"] | null
+          candidate_known: boolean | null
           created_at: string
           department_id: string | null
           end_date: string | null
           entity_id: string
+          fill_source: Database["public"]["Enums"]["fill_source"] | null
           flow_type: Database["public"]["Enums"]["flow_type"]
+          fulfillment_type:
+            | Database["public"]["Enums"]["fulfillment_type"]
+            | null
           id: string
           jd_id: string | null
           location: string | null
@@ -799,11 +804,16 @@ export type Database = {
           bill_rate?: number | null
           billing_entity_id?: string | null
           billing_model?: Database["public"]["Enums"]["billing_model"] | null
+          candidate_known?: boolean | null
           created_at?: string
           department_id?: string | null
           end_date?: string | null
           entity_id: string
+          fill_source?: Database["public"]["Enums"]["fill_source"] | null
           flow_type: Database["public"]["Enums"]["flow_type"]
+          fulfillment_type?:
+            | Database["public"]["Enums"]["fulfillment_type"]
+            | null
           id?: string
           jd_id?: string | null
           location?: string | null
@@ -820,11 +830,16 @@ export type Database = {
           bill_rate?: number | null
           billing_entity_id?: string | null
           billing_model?: Database["public"]["Enums"]["billing_model"] | null
+          candidate_known?: boolean | null
           created_at?: string
           department_id?: string | null
           end_date?: string | null
           entity_id?: string
+          fill_source?: Database["public"]["Enums"]["fill_source"] | null
           flow_type?: Database["public"]["Enums"]["flow_type"]
+          fulfillment_type?:
+            | Database["public"]["Enums"]["fulfillment_type"]
+            | null
           id?: string
           jd_id?: string | null
           location?: string | null
@@ -1213,7 +1228,13 @@ export type Database = {
       entity_service_source: "ai" | "manual"
       entity_service_status: "recommended" | "selected" | "active"
       entity_status: "active" | "inactive" | "prospect"
+      fill_source:
+        | "self_pending"
+        | "self_known"
+        | "staffing_outside"
+        | "staffing_kickoff"
       flow_type: "worker" | "supplier"
+      fulfillment_type: "agent" | "worker" | "project"
       intake_persona: "cra" | "prospect"
       intake_status: "in_progress" | "completed" | "confirmed"
       jd_risk_status: "ai_estimated" | "confirmed" | "needs_review"
@@ -1224,6 +1245,7 @@ export type Database = {
         | "filled"
         | "closed"
         | "cancelled"
+        | "draft"
       job_status: "offered" | "active" | "ended"
       job_title_status: "ai_suggested" | "confirmed" | "needs_review"
       pay_type: "hourly" | "salary"
@@ -1385,7 +1407,14 @@ export const Constants = {
       entity_service_source: ["ai", "manual"],
       entity_service_status: ["recommended", "selected", "active"],
       entity_status: ["active", "inactive", "prospect"],
+      fill_source: [
+        "self_pending",
+        "self_known",
+        "staffing_outside",
+        "staffing_kickoff",
+      ],
       flow_type: ["worker", "supplier"],
+      fulfillment_type: ["agent", "worker", "project"],
       intake_persona: ["cra", "prospect"],
       intake_status: ["in_progress", "completed", "confirmed"],
       jd_risk_status: ["ai_estimated", "confirmed", "needs_review"],
@@ -1396,6 +1425,7 @@ export const Constants = {
         "filled",
         "closed",
         "cancelled",
+        "draft",
       ],
       job_status: ["offered", "active", "ended"],
       job_title_status: ["ai_suggested", "confirmed", "needs_review"],
