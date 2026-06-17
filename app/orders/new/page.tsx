@@ -644,13 +644,12 @@ export default function NewOrder() {
           </div>
         )}
 
-        {current.key === "persona" && (
-          <div className="row" style={{ marginTop: 16 }}>
-            <Link href="/">
-              <button>← Home</button>
-            </Link>
-          </div>
-        )}
+        {/* Home is available on every step */}
+        <div className="row" style={{ marginTop: 16 }}>
+          <Link href="/">
+            <button>← Home</button>
+          </Link>
+        </div>
       </div>
     </>
   );

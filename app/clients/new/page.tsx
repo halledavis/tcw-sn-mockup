@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import {
@@ -1009,6 +1010,13 @@ export default function NewClientWizard() {
             </div>
           );
         })()}
+
+        {/* Home is available on every step */}
+        <div className="row" style={{ marginTop: 16 }}>
+          <Link href="/">
+            <button>← Home</button>
+          </Link>
+        </div>
       </div>
     </>
   );
