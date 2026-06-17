@@ -779,8 +779,11 @@ export type Database = {
           billing_entity_id: string | null
           billing_model: Database["public"]["Enums"]["billing_model"] | null
           candidate_known: boolean | null
+          client_job_title_id: string | null
           created_at: string
           department_id: string | null
+          duration_unit: Database["public"]["Enums"]["duration_unit"] | null
+          duration_value: number | null
           end_date: string | null
           entity_id: string
           fill_source: Database["public"]["Enums"]["fill_source"] | null
@@ -788,6 +791,7 @@ export type Database = {
           fulfillment_type:
             | Database["public"]["Enums"]["fulfillment_type"]
             | null
+          hours_type: Database["public"]["Enums"]["hours_type"] | null
           id: string
           jd_id: string | null
           location: string | null
@@ -799,14 +803,18 @@ export type Database = {
           status: Database["public"]["Enums"]["job_order_status"]
           sub_entity_id: string | null
           submitted_by: string | null
+          weekly_hours: number | null
         }
         Insert: {
           bill_rate?: number | null
           billing_entity_id?: string | null
           billing_model?: Database["public"]["Enums"]["billing_model"] | null
           candidate_known?: boolean | null
+          client_job_title_id?: string | null
           created_at?: string
           department_id?: string | null
+          duration_unit?: Database["public"]["Enums"]["duration_unit"] | null
+          duration_value?: number | null
           end_date?: string | null
           entity_id: string
           fill_source?: Database["public"]["Enums"]["fill_source"] | null
@@ -814,6 +822,7 @@ export type Database = {
           fulfillment_type?:
             | Database["public"]["Enums"]["fulfillment_type"]
             | null
+          hours_type?: Database["public"]["Enums"]["hours_type"] | null
           id?: string
           jd_id?: string | null
           location?: string | null
@@ -825,14 +834,18 @@ export type Database = {
           status?: Database["public"]["Enums"]["job_order_status"]
           sub_entity_id?: string | null
           submitted_by?: string | null
+          weekly_hours?: number | null
         }
         Update: {
           bill_rate?: number | null
           billing_entity_id?: string | null
           billing_model?: Database["public"]["Enums"]["billing_model"] | null
           candidate_known?: boolean | null
+          client_job_title_id?: string | null
           created_at?: string
           department_id?: string | null
+          duration_unit?: Database["public"]["Enums"]["duration_unit"] | null
+          duration_value?: number | null
           end_date?: string | null
           entity_id?: string
           fill_source?: Database["public"]["Enums"]["fill_source"] | null
@@ -840,6 +853,7 @@ export type Database = {
           fulfillment_type?:
             | Database["public"]["Enums"]["fulfillment_type"]
             | null
+          hours_type?: Database["public"]["Enums"]["hours_type"] | null
           id?: string
           jd_id?: string | null
           location?: string | null
@@ -851,6 +865,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["job_order_status"]
           sub_entity_id?: string | null
           submitted_by?: string | null
+          weekly_hours?: number | null
         }
         Relationships: [
           {
@@ -858,6 +873,13 @@ export type Database = {
             columns: ["billing_entity_id"]
             isOneToOne: false
             referencedRelation: "entity"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_order_client_job_title_id_fkey"
+            columns: ["client_job_title_id"]
+            isOneToOne: false
+            referencedRelation: "client_job_title"
             referencedColumns: ["id"]
           },
           {
@@ -1224,6 +1246,7 @@ export type Database = {
       billing_model: "markup" | "bill_rate"
       config_status: "not_started" | "completed" | "skipped"
       contact_kind: "signatory" | "primary"
+      duration_unit: "days" | "weeks" | "months" | "years"
       entity_kind: "client" | "tcw" | "eor" | "agency" | "vendor" | "msp"
       entity_service_source: "ai" | "manual"
       entity_service_status: "recommended" | "selected" | "active"
@@ -1235,6 +1258,7 @@ export type Database = {
         | "staffing_kickoff"
       flow_type: "worker" | "supplier"
       fulfillment_type: "agent" | "worker" | "project"
+      hours_type: "fixed" | "variable"
       intake_persona: "cra" | "prospect"
       intake_status: "in_progress" | "completed" | "confirmed"
       jd_risk_status: "ai_estimated" | "confirmed" | "needs_review"
@@ -1403,6 +1427,7 @@ export const Constants = {
       billing_model: ["markup", "bill_rate"],
       config_status: ["not_started", "completed", "skipped"],
       contact_kind: ["signatory", "primary"],
+      duration_unit: ["days", "weeks", "months", "years"],
       entity_kind: ["client", "tcw", "eor", "agency", "vendor", "msp"],
       entity_service_source: ["ai", "manual"],
       entity_service_status: ["recommended", "selected", "active"],
@@ -1415,6 +1440,7 @@ export const Constants = {
       ],
       flow_type: ["worker", "supplier"],
       fulfillment_type: ["agent", "worker", "project"],
+      hours_type: ["fixed", "variable"],
       intake_persona: ["cra", "prospect"],
       intake_status: ["in_progress", "completed", "confirmed"],
       jd_risk_status: ["ai_estimated", "confirmed", "needs_review"],

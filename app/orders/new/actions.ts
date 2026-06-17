@@ -27,6 +27,44 @@ export async function listOrderClients(): Promise<OrderClient[]> {
   }
 }
 
+// --- Engagement-step dropdowns: the selected client's departments + titles ---
+export type DepartmentRow = { id: string; name: string };
+export type ClientTitleRow = { id: string; title: string };
+
+export async function listClientDepartments(entityId: string): Promise<DepartmentRow[]> {
+  if (!z.string().uuid().safeParse(entityId).success) return [];
+  try {
+    const supabase = supabaseAdmin();
+    const { data, error } = await supabase
+      .from("department")
+      .select("id, name")
+      .eq("entity_id", entityId)
+      .order("name");
+    if (error) return [];
+    return (data ?? []) as DepartmentRow[];
+  } catch (e) {
+    console.error("listClientDepartments failed:", e);
+    return [];
+  }
+}
+
+export async function listClientJobTitles(entityId: string): Promise<ClientTitleRow[]> {
+  if (!z.string().uuid().safeParse(entityId).success) return [];
+  try {
+    const supabase = supabaseAdmin();
+    const { data, error } = await supabase
+      .from("client_job_title")
+      .select("id, title")
+      .eq("entity_id", entityId)
+      .order("title");
+    if (error) return [];
+    return (data ?? []) as ClientTitleRow[];
+  } catch (e) {
+    console.error("listClientJobTitles failed:", e);
+    return [];
+  }
+}
+
 // --- Mappings: wizard selections -> the existing flow_type/source_type pair ---
 // flow_type: agent is a placeholder ('worker') until agent modeling exists.
 function toFlowType(fulfillment: "agent" | "worker" | "project"): FlowType {
@@ -106,24 +144,53 @@ export async function createDraftOrder(input: unknown): Promise<CreateResult> {
   }
 }
 
-// Stub update path so later flow steps edit the SAME row (CRUD, not insert-only).
-// Signature is ready; body intentionally minimal for now.
-export async function updateDraftOrder(id: string, input: Partial<OrderPayload>): Promise<{ ok: boolean; error?: string }> {
+// Update path so later flow steps edit the SAME draft row (CRUD, not
+// insert-only). Every field is optional: undefined = leave as-is, null = clear.
+// The Engagement-details step uses this to write its fields onto the draft.
+const updateSchema = z.object({
+  // earlier-step edits
+  fulfillment: z.enum(["agent", "worker", "project"]).optional(),
+  fillSource: z.enum(["self_pending", "self_known", "staffing_outside", "staffing_kickoff"]).nullable().optional(),
+  numWorkers: z.number().int().positive().optional(),
+  // engagement details
+  clientJobTitleId: z.string().uuid().nullable().optional(),
+  departmentId: z.string().uuid().nullable().optional(),
+  weeklyHours: z.number().nonnegative().nullable().optional(),
+  hoursType: z.enum(["fixed", "variable"]).nullable().optional(),
+  durationValue: z.number().int().positive().nullable().optional(),
+  durationUnit: z.enum(["days", "weeks", "months", "years"]).nullable().optional(),
+  startDate: z.string().nullable().optional(),
+  endDate: z.string().nullable().optional(),
+});
+export type UpdateOrderPayload = z.input<typeof updateSchema>;
+
+export async function updateDraftOrder(id: string, input: UpdateOrderPayload): Promise<{ ok: boolean; error?: string }> {
   const idCheck = z.string().uuid().safeParse(id);
   if (!idCheck.success) return { ok: false, error: "Invalid order id." };
+  const parsed = updateSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input." };
+  const p = parsed.data;
   try {
     const supabase = supabaseAdmin();
     const patch: Database["public"]["Tables"]["job_order"]["Update"] = {};
-    if (input.fulfillment) {
-      patch.fulfillment_type = input.fulfillment;
-      patch.flow_type = toFlowType(input.fulfillment);
+    if (p.fulfillment !== undefined) {
+      patch.fulfillment_type = p.fulfillment;
+      patch.flow_type = toFlowType(p.fulfillment);
     }
-    if (input.fillSource !== undefined) {
-      patch.fill_source = input.fillSource;
-      patch.candidate_known = toCandidateKnown(input.fillSource ?? null);
-      if (input.fulfillment) patch.source_type = toSourceType(input.fulfillment, input.fillSource ?? null);
+    if (p.fillSource !== undefined) {
+      patch.fill_source = p.fillSource;
+      patch.candidate_known = toCandidateKnown(p.fillSource);
+      if (p.fulfillment) patch.source_type = toSourceType(p.fulfillment, p.fillSource);
     }
-    if (input.numWorkers !== undefined) patch.num_workers = input.numWorkers;
+    if (p.numWorkers !== undefined) patch.num_workers = p.numWorkers;
+    if (p.clientJobTitleId !== undefined) patch.client_job_title_id = p.clientJobTitleId;
+    if (p.departmentId !== undefined) patch.department_id = p.departmentId;
+    if (p.weeklyHours !== undefined) patch.weekly_hours = p.weeklyHours;
+    if (p.hoursType !== undefined) patch.hours_type = p.hoursType;
+    if (p.durationValue !== undefined) patch.duration_value = p.durationValue;
+    if (p.durationUnit !== undefined) patch.duration_unit = p.durationUnit;
+    if (p.startDate !== undefined) patch.start_date = p.startDate;
+    if (p.endDate !== undefined) patch.end_date = p.endDate;
     if (Object.keys(patch).length === 0) return { ok: true };
     const { error } = await supabase.from("job_order").update(patch).eq("id", idCheck.data);
     if (error) return { ok: false, error: error.message };
