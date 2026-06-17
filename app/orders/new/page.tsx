@@ -6,7 +6,6 @@ import { useState } from "react";
 type OrderPersona = "eor" | "vms" | "staffing" | "agent" | "1099s";
 type Fulfillment = "agent" | "worker" | "project";
 type Source = "self_pending" | "self_known" | "staffing_outside" | "staffing_kickoff";
-type Step = "persona" | "fulfillment" | "source" | "flow";
 
 const PERSONAS: { code: OrderPersona; label: string; blurb: string }[] = [
   { code: "eor", label: "Client with EOR Service Only", blurb: "Places orders for workers TargetCW will legally employ as Employer of Record." },
@@ -44,33 +43,51 @@ function sourcesFor(persona: OrderPersona) {
   return SOURCES.filter((s) => s.code.startsWith("self_") || hasStaffing);
 }
 
+type FlowState = { persona: OrderPersona | null; fulfillment: Fulfillment | null };
+
+// The effective fulfillment: a persona that yields only Worker has it implied
+// (the fulfillment step is skipped), otherwise it's whatever the user picked.
+function effectiveFulfillment(s: FlowState): Fulfillment | null {
+  if (!s.persona) return null;
+  return fulfillmentsFor(s.persona).length === 1 ? "worker" : s.fulfillment;
+}
+
+// Ordered flow descriptors. isActive decides whether a step shows given the
+// current selections; the visible flow is these filtered against state, and
+// navigation walks an index through that list. Add a step = add a descriptor.
+const STEPS: { key: string; label: string; isActive: (s: FlowState) => boolean }[] = [
+  { key: "persona", label: "Roleplay", isActive: () => true },
+  { key: "fulfillment", label: "Work Fulfillment Strategy", isActive: (s) => !!s.persona && fulfillmentsFor(s.persona).length > 1 },
+  { key: "source", label: "Fill Source Strategy", isActive: (s) => effectiveFulfillment(s) === "worker" },
+  { key: "flow", label: "Order Intake flow", isActive: () => true },
+];
+
 export default function NewOrder() {
-  const [step, setStep] = useState<Step>("persona");
+  const [stepIndex, setStepIndex] = useState(0);
   const [persona, setPersona] = useState<OrderPersona | null>(null);
   const [fulfillment, setFulfillment] = useState<Fulfillment | null>(null);
   const [source, setSource] = useState<Source | null>(null);
 
+  const state: FlowState = { persona, fulfillment };
+  const visible = STEPS.filter((s) => s.isActive(state));
+  const idx = Math.min(stepIndex, visible.length - 1);
+  const current = visible[idx];
+
   const options = persona ? fulfillmentsFor(persona) : [];
   const sourceOptions = persona ? sourcesFor(persona) : [];
-  const hasFulfillmentStep = options.length > 1;
 
-  function continueFromPersona() {
-    if (!persona) return;
+  const goNext = () => setStepIndex(idx + 1);
+  const goBack = () => setStepIndex(Math.max(0, idx - 1));
+
+  // Changing an earlier selection clears downstream picks so they can't go stale.
+  function pickPersona(code: OrderPersona) {
+    setPersona(code);
+    setFulfillment(null);
     setSource(null);
-    if (hasFulfillmentStep) {
-      setFulfillment(null);
-      setStep("fulfillment");
-    } else {
-      // Only worker available → skip the fulfillment page, go to source.
-      setFulfillment("worker");
-      setStep("source");
-    }
   }
-
-  function continueFromFulfillment() {
-    if (!fulfillment) return;
-    // Worker requisitions choose a fill source next; agent/project skip ahead.
-    setStep(fulfillment === "worker" ? "source" : "flow");
+  function pickFulfillment(code: Fulfillment) {
+    setFulfillment(code);
+    setSource(null);
   }
 
   return (
@@ -80,7 +97,7 @@ export default function NewOrder() {
         <h1>Order Intake</h1>
 
         {/* Screen 1 — persona / roleplay (greyed pre-flow config) */}
-        {step === "persona" && (
+        {current.key === "persona" && (
           <div className="panel mock">
             <div className="steps">PRE-ORDER CONFIG</div>
             <h2>INTERNAL MOCKUP PAGE ONLY: What are you roleplaying as?</h2>
@@ -88,37 +105,37 @@ export default function NewOrder() {
               <button
                 key={p.code}
                 className={`choice ${persona === p.code ? "selected" : ""}`}
-                onClick={() => setPersona(p.code)}
+                onClick={() => pickPersona(p.code)}
               >
                 <strong>{p.label}</strong>
                 <div className="muted small">{p.blurb}</div>
               </button>
             ))}
-            <button className="primary" disabled={!persona} onClick={continueFromPersona}>
+            <button className="primary" disabled={!persona} onClick={goNext}>
               Continue →
             </button>
           </div>
         )}
 
-        {/* Screen 2 (step 1) — work fulfillment strategy */}
-        {step === "fulfillment" && (
+        {/* Screen 2 — work fulfillment strategy */}
+        {current.key === "fulfillment" && (
           <div className="panel">
-            <div className="steps">Step 1</div>
+            <div className="steps">Step {idx}</div>
             <h2>Work Fulfillment Strategy</h2>
             <p className="muted small">How do you want to complete the work you need done?</p>
             {options.map((f) => (
               <button
                 key={f.code}
                 className={`choice ${fulfillment === f.code ? "selected" : ""}`}
-                onClick={() => setFulfillment(f.code)}
+                onClick={() => pickFulfillment(f.code)}
               >
                 <strong>{f.label}</strong>
                 <div className="muted small">{f.blurb}</div>
               </button>
             ))}
             <div className="row" style={{ marginTop: 12 }}>
-              <button onClick={() => setStep("persona")}>← Back</button>
-              <button className="primary" disabled={!fulfillment} onClick={continueFromFulfillment}>
+              <button onClick={goBack}>← Back</button>
+              <button className="primary" disabled={!fulfillment} onClick={goNext}>
                 Continue →
               </button>
             </div>
@@ -126,9 +143,9 @@ export default function NewOrder() {
         )}
 
         {/* Screen 3 — fill source strategy (worker requisitions only) */}
-        {step === "source" && (
+        {current.key === "source" && (
           <div className="panel">
-            <div className="steps">Step {hasFulfillmentStep ? 2 : 1}</div>
+            <div className="steps">Step {idx}</div>
             <h2>Fill Source Strategy</h2>
             <p className="muted small">
               Select how this worker vacancy will be fulfilled and routed through the StaffingNation procurement engine.
@@ -144,8 +161,8 @@ export default function NewOrder() {
               </button>
             ))}
             <div className="row" style={{ marginTop: 12 }}>
-              <button onClick={() => setStep(hasFulfillmentStep ? "fulfillment" : "persona")}>← Back</button>
-              <button className="primary" disabled={!source} onClick={() => setStep("flow")}>
+              <button onClick={goBack}>← Back</button>
+              <button className="primary" disabled={!source} onClick={goNext}>
                 Continue →
               </button>
             </div>
@@ -153,21 +170,17 @@ export default function NewOrder() {
         )}
 
         {/* Screen 4 — order flow */}
-        {step === "flow" && (
+        {current.key === "flow" && (
           <div className="panel">
             <h2>Order Intake flow</h2>
             <p className="muted small">Coming soon.</p>
             <div className="row" style={{ marginTop: 16 }}>
-              <button
-                onClick={() => setStep(fulfillment === "worker" ? "source" : hasFulfillmentStep ? "fulfillment" : "persona")}
-              >
-                ← Back
-              </button>
+              <button onClick={goBack}>← Back</button>
             </div>
           </div>
         )}
 
-        {step === "persona" && (
+        {current.key === "persona" && (
           <div className="row" style={{ marginTop: 16 }}>
             <Link href="/">
               <button>← Home</button>
