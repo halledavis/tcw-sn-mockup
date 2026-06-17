@@ -18,36 +18,38 @@ export default function Home() {
         <div className="panel">
           <h2>AI-Driven Client Intake</h2>
 
-          <ol style={{ listStyle: "none", margin: "12px 0 0", padding: 0, display: "flex", flexDirection: "column", gap: 14 }}>
-            {flow.map((group) => (
-              <li key={group.phase}>
-                <div className="muted small" style={{ textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 6 }}>
-                  {group.phase}
+          <div style={{ display: "flex", flexWrap: "wrap", alignItems: "stretch", gap: 0, marginTop: 14 }}>
+            {flow.map((group, i) => (
+              <div key={group.phase} style={{ display: "flex", alignItems: "stretch" }}>
+                <div style={{ minWidth: 150 }}>
+                  <div className="muted small" style={{ textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 6 }}>
+                    {group.phase}
+                  </div>
+                  <ul style={{ listStyle: "none", margin: 0, padding: 0, display: "flex", flexDirection: "column", gap: 3 }}>
+                    {group.steps.map((step) => {
+                      const emphasize = step === "Create Client";
+                      return (
+                        <li
+                          key={step}
+                          className={emphasize ? "small" : "muted small"}
+                          style={emphasize ? { fontWeight: 600 } : undefined}
+                        >
+                          {step}
+                        </li>
+                      );
+                    })}
+                  </ul>
                 </div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
-                  {group.steps.map((step, i) => (
-                    <span key={step} style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                      <span
-                        style={{
-                          padding: "4px 10px",
-                          borderRadius: 999,
-                          border: "1px solid var(--line)",
-                          fontSize: 13,
-                          whiteSpace: "nowrap",
-                          fontWeight: step === "Create Client" ? 600 : 400,
-                        }}
-                      >
-                        {step}
-                      </span>
-                      {i < group.steps.length - 1 && <span className="muted" style={{ fontSize: 12 }}>→</span>}
-                    </span>
-                  ))}
-                </div>
-              </li>
+                {i < flow.length - 1 && (
+                  <div className="muted" style={{ display: "flex", alignItems: "center", padding: "0 18px", fontSize: 18 }}>
+                    →
+                  </div>
+                )}
+              </div>
             ))}
-          </ol>
+          </div>
 
-          <p className="muted small" style={{ marginTop: 12 }}>
+          <p className="muted small" style={{ marginTop: 16 }}>
             Module Config renders only the services that are on — EOR · Staffing · International · VMS — in order, skipping the rest.
           </p>
 

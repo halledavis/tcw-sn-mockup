@@ -75,10 +75,10 @@ const STEPS: { key: string; label: string; isActive: (s: FlowState) => boolean }
   { key: "persona", label: "Roleplay", isActive: () => true },
   { key: "fulfillment", label: "Work Fulfillment Strategy", isActive: (s) => !!s.persona && fulfillmentsFor(s.persona).length > 1 },
   { key: "source", label: "Fill Source Strategy", isActive: (s) => effectiveFulfillment(s) === "worker" },
-  { key: "engagement", label: "Engagement details", isActive: (s) => effectiveFulfillment(s) === "worker" },
-  { key: "location", label: "Location details", isActive: (s) => effectiveFulfillment(s) === "worker" },
-  { key: "pay", label: "Pay rate", isActive: (s) => effectiveFulfillment(s) === "worker" },
-  { key: "flow", label: "Order Intake flow", isActive: () => true },
+  { key: "engagement", label: "Engagement Details", isActive: (s) => effectiveFulfillment(s) === "worker" },
+  { key: "location", label: "Location Details", isActive: (s) => effectiveFulfillment(s) === "worker" },
+  { key: "pay", label: "Pay Rate", isActive: (s) => effectiveFulfillment(s) === "worker" },
+  { key: "flow", label: "Order Intake Flow", isActive: () => true },
 ];
 
 // start_date + duration -> end_date (YYYY-MM-DD), for the "by duration" mode.
@@ -417,7 +417,7 @@ export default function NewOrder() {
             <h2>Engagement details</h2>
 
             <div style={{ marginTop: 12 }}>
-              <label className="small muted">Department (optional)</label>
+              <label className="small muted">Department</label>
               <select style={inp} value={departmentId} onChange={(e) => setDepartmentId(e.target.value)}>
                 <option value="">{departments.length ? "None" : "No departments for this client"}</option>
                 {departments.map((d) => (
@@ -427,7 +427,7 @@ export default function NewOrder() {
             </div>
 
             <div style={{ marginTop: 12 }}>
-              <label className="small muted">Job title *</label>
+              <label className="small muted">Job Description</label>
               <select style={inp} value={jobTitleId} onChange={(e) => setJobTitleId(e.target.value)}>
                 <option value="">Select a job title…</option>
                 {titles.map((t) => (
@@ -442,7 +442,7 @@ export default function NewOrder() {
             </div>
 
             <div style={{ marginTop: 16 }}>
-              <label className="small muted">Estimated weekly hours</label>
+              <label className="small muted">Estimated Weekly Hours</label>
               <div className="row" style={{ marginTop: 4 }}>
                 <label className="small"><input type="radio" name="hoursMode" checked={hoursMode === "fixed"} onChange={() => setHoursMode("fixed")} /> Fixed</label>
                 <label className="small"><input type="radio" name="hoursMode" checked={hoursMode === "variable"} onChange={() => setHoursMode("variable")} /> Variable</label>
@@ -460,12 +460,12 @@ export default function NewOrder() {
             </div>
 
             <div style={{ marginTop: 16 }}>
-              <label className="small muted">Anticipated start date *</label>
+              <label className="small muted">Anticipated Start Date *</label>
               <input style={inp} type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
             </div>
 
             <div style={{ marginTop: 16 }}>
-              <label className="small muted">Engagement end</label>
+              <label className="small muted">Engagement End</label>
               <div className="row" style={{ marginTop: 4 }}>
                 <label className="small"><input type="radio" name="endMode" checked={endMode === "duration"} onChange={() => setEndMode("duration")} /> By duration</label>
                 <label className="small"><input type="radio" name="endMode" checked={endMode === "date"} onChange={() => setEndMode("date")} /> By end date</label>
@@ -495,7 +495,7 @@ export default function NewOrder() {
                 <input style={inp} type="date" value={endDateInput} onChange={(e) => setEndDateInput(e.target.value)} />
               )}
               {endMode === "none" && (
-                <div className="muted small" style={{ marginTop: 4 }}>Open-ended — no end date set.</div>
+                <div className="muted small" style={{ marginTop: 4 }}>Open-ended: No end date set.</div>
               )}
             </div>
 
@@ -518,7 +518,7 @@ export default function NewOrder() {
             <WorldMap locations={locations} scopeCountries={scopeCountries} />
 
             <div style={{ marginTop: 16 }}>
-              <label className="small muted">Work arrangement *</label>
+              <label className="small muted">Work Arrangement *</label>
               <div className="row" style={{ marginTop: 4, flexWrap: "wrap" }}>
                 <label className="small"><input type="radio" name="work" checked={workArrangement === "onsite"} onChange={() => setWorkArrangement("onsite")} /> Onsite</label>
                 <label className="small"><input type="radio" name="work" checked={workArrangement === "remote"} onChange={() => setWorkArrangement("remote")} /> Remote</label>
@@ -530,7 +530,7 @@ export default function NewOrder() {
             </div>
 
             <div style={{ marginTop: 16 }}>
-              <label className="small muted">Reporting location *</label>
+              <label className="small muted">Reporting Location *</label>
               <select style={inp} value={reportingLocationId} onChange={(e) => setReportingLocationId(e.target.value)}>
                 <option value="">Select a location…</option>
                 {locations.map((l) => (
