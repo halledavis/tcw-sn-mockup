@@ -13,7 +13,9 @@
   // land in the repo. Locally: next dev reads .env.local; wrangler dev /
   // opennextjs-cloudflare preview read .dev.vars.
   "vars": {
-    "NEXT_PUBLIC_SUPABASE_URL": "https://dsvtqjnjdxvvjvrgvgep.supabase.co",
+    // SUPABASE_URL (no NEXT_PUBLIC_ prefix) is read at RUNTIME by the server —
+    // NEXT_PUBLIC_* would be inlined at build time and can't be set via vars.
+    "SUPABASE_URL": "https://dsvtqjnjdxvvjvrgvgep.supabase.co",
     "OPENAI_MODEL": "gpt-4o-mini"
   },
   "assets": {
