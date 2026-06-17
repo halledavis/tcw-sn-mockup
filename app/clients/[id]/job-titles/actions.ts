@@ -4,7 +4,10 @@ import { z } from "zod";
 import { supabaseAdmin } from "@/lib/supabaseServer";
 import { categorizeJobTitle as categorize, type CategorizeResult } from "@/lib/llm";
 import { RISK_TIER_CODES } from "@/lib/catalog";
-import type { Json } from "@/lib/database.types";
+import type { Database, Json } from "@/lib/database.types";
+
+export type BillCardServiceType = Database["public"]["Enums"]["bill_card_service_type"];
+const SERVICE_TYPES = ["eor", "staffing", "vms"] as const;
 
 // Page 6 — job types / risk tiering / bill cards.
 
@@ -106,26 +109,53 @@ export async function saveBillCards(cards: unknown): Promise<{ ok: boolean; erro
   }
 }
 
-// --- Derive draft bill cards (one per distinct confirmed tier) ---
+// --- Derive draft bill cards (one per distinct confirmed tier, per service) ---
 export type BillCard = {
   id: string;
-  risk_tier_id: string;
+  risk_tier_id: string | null;
+  service_type: BillCardServiceType;
   states: Json;
   markup_pct: number | null;
   status: string;
 };
 export type DeriveResult = { ok: true; cards: BillCard[] } | { ok: false; error: string };
 
-export async function deriveBillCards(entityId: string): Promise<DeriveResult> {
+export async function deriveBillCards(entityId: string, serviceType: BillCardServiceType): Promise<DeriveResult> {
   const id = z.string().uuid().safeParse(entityId);
   if (!id.success) return { ok: false, error: "Invalid client id." };
+  const st = z.enum(SERVICE_TYPES).safeParse(serviceType);
+  if (!st.success) return { ok: false, error: "Invalid service type." };
   try {
     const supabase = supabaseAdmin();
-    const { data, error } = await supabase.rpc("derive_bill_cards", { p_entity_id: id.data });
+    const { data, error } = await supabase.rpc("derive_bill_cards", {
+      p_entity_id: id.data,
+      p_service_type: st.data,
+    });
     if (error) return { ok: false, error: error.message };
     return { ok: true, cards: (data ?? []) as unknown as BillCard[] };
   } catch (e) {
     console.error("deriveBillCards failed:", e);
     return { ok: false, error: e instanceof Error ? e.message : "Derive failed." };
+  }
+}
+
+// --- List existing bill cards for a client + service (for resuming a page) ---
+export async function listBillCards(entityId: string, serviceType: BillCardServiceType): Promise<BillCard[]> {
+  const id = z.string().uuid().safeParse(entityId);
+  const st = z.enum(SERVICE_TYPES).safeParse(serviceType);
+  if (!id.success || !st.success) return [];
+  try {
+    const supabase = supabaseAdmin();
+    const { data, error } = await supabase
+      .from("bill_card")
+      .select("id, risk_tier_id, service_type, states, markup_pct, status")
+      .eq("entity_id", id.data)
+      .eq("service_type", st.data)
+      .order("markup_pct");
+    if (error) return [];
+    return (data ?? []) as unknown as BillCard[];
+  } catch (e) {
+    console.error("listBillCards failed:", e);
+    return [];
   }
 }

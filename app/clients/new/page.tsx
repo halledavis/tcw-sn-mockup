@@ -987,7 +987,8 @@ export default function NewClientWizard() {
         )}
 
         {/* Screens 7+ — module-gated config pages from the registry, in order.
-            Real components arrive later; placeholders keep the sequencing live. */}
+            Each component owns its content + footer nav; the wizard supplies
+            the back/skip/complete handlers. */}
         {step === "config" && configPages[configIndex] && (() => {
           const def = configPages[configIndex];
           const Comp = def.component;
@@ -998,31 +999,13 @@ export default function NewClientWizard() {
               </div>
               <Comp
                 entityId={entityId ?? ""}
+                isLast={configIndex + 1 >= configPages.length}
                 busy={configBusy}
-                onComplete={() => resolveConfig(def.key, "completed")}
+                onBack={() => (configIndex === 0 ? setStep("jobtitles") : setConfigIndex(configIndex - 1))}
                 onSkip={() => resolveConfig(def.key, "skipped")}
+                onComplete={() => resolveConfig(def.key, "completed")}
               />
-
               {error && <div className="err">{error}</div>}
-
-              <div className="row" style={{ marginTop: 20 }}>
-                <button
-                  disabled={configBusy}
-                  onClick={() => (configIndex === 0 ? setStep("jobtitles") : setConfigIndex(configIndex - 1))}
-                >
-                  ← Back
-                </button>
-                <button disabled={configBusy} onClick={() => resolveConfig(def.key, "skipped")}>
-                  {configBusy ? "Saving…" : "Skip"}
-                </button>
-                <button className="primary" disabled={configBusy} onClick={() => resolveConfig(def.key, "completed")}>
-                  {configBusy
-                    ? "Saving…"
-                    : configIndex + 1 >= configPages.length
-                      ? "Finish →"
-                      : "Mark complete →"}
-                </button>
-              </div>
             </div>
           );
         })()}

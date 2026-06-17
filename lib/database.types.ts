@@ -1132,7 +1132,10 @@ export type Database = {
         Returns: string
       }
       derive_bill_cards: {
-        Args: { p_entity_id: string }
+        Args: {
+          p_entity_id: string
+          p_service_type: Database["public"]["Enums"]["bill_card_service_type"]
+        }
         Returns: {
           created_at: string
           entity_id: string
