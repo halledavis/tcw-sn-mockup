@@ -124,7 +124,7 @@ export default function NewOrder() {
   const [hoursMode, setHoursMode] = useState<"fixed" | "variable">("fixed");
   const [fixedHours, setFixedHours] = useState("");
   const [startDate, setStartDate] = useState("");
-  const [endMode, setEndMode] = useState<"duration" | "date">("duration");
+  const [endMode, setEndMode] = useState<"duration" | "date" | "none">("duration");
   const [durationValue, setDurationValue] = useState("");
   const [durationUnit, setDurationUnit] = useState<DurationUnit>("weeks");
   const [endDateInput, setEndDateInput] = useState("");
@@ -202,7 +202,7 @@ export default function NewOrder() {
     !!jobTitleId &&
     !!startDate &&
     (hoursMode === "variable" || Number(fixedHours) > 0) &&
-    (endMode === "duration" ? Number(durationValue) > 0 : !!endDateInput);
+    (endMode === "duration" ? Number(durationValue) > 0 : endMode === "date" ? !!endDateInput : true);
 
   async function saveEngagement() {
     if (!draftId) return;
@@ -216,7 +216,7 @@ export default function NewOrder() {
       startDate,
       durationValue: endMode === "duration" ? Number(durationValue) : null,
       durationUnit: endMode === "duration" ? durationUnit : null,
-      endDate: endMode === "duration" ? computedEndDate : endDateInput,
+      endDate: endMode === "duration" ? computedEndDate : endMode === "date" ? endDateInput : null,
     });
     setSavingEngagement(false);
     if (!res.ok) return setEngagementError(res.error ?? "Save failed.");
@@ -469,8 +469,9 @@ export default function NewOrder() {
               <div className="row" style={{ marginTop: 4 }}>
                 <label className="small"><input type="radio" name="endMode" checked={endMode === "duration"} onChange={() => setEndMode("duration")} /> By duration</label>
                 <label className="small"><input type="radio" name="endMode" checked={endMode === "date"} onChange={() => setEndMode("date")} /> By end date</label>
+                <label className="small"><input type="radio" name="endMode" checked={endMode === "none"} onChange={() => setEndMode("none")} /> No known end</label>
               </div>
-              {endMode === "duration" ? (
+              {endMode === "duration" && (
                 <>
                   <div className="row" style={{ marginTop: 4 }}>
                     <div style={{ flex: 1 }}>
@@ -489,8 +490,12 @@ export default function NewOrder() {
                     Computed end date: {computedEndDate || "—"}
                   </div>
                 </>
-              ) : (
+              )}
+              {endMode === "date" && (
                 <input style={inp} type="date" value={endDateInput} onChange={(e) => setEndDateInput(e.target.value)} />
+              )}
+              {endMode === "none" && (
+                <div className="muted small" style={{ marginTop: 4 }}>Open-ended — no end date set.</div>
               )}
             </div>
 
