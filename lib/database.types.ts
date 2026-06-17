@@ -92,7 +92,8 @@ export type Database = {
           entity_id: string
           id: string
           markup_pct: number | null
-          risk_tier_id: string
+          risk_tier_id: string | null
+          service_type: Database["public"]["Enums"]["bill_card_service_type"]
           states: Json
           status: Database["public"]["Enums"]["bill_card_status"]
         }
@@ -101,7 +102,8 @@ export type Database = {
           entity_id: string
           id?: string
           markup_pct?: number | null
-          risk_tier_id: string
+          risk_tier_id?: string | null
+          service_type: Database["public"]["Enums"]["bill_card_service_type"]
           states?: Json
           status?: Database["public"]["Enums"]["bill_card_status"]
         }
@@ -110,7 +112,8 @@ export type Database = {
           entity_id?: string
           id?: string
           markup_pct?: number | null
-          risk_tier_id?: string
+          risk_tier_id?: string | null
+          service_type?: Database["public"]["Enums"]["bill_card_service_type"]
           states?: Json
           status?: Database["public"]["Enums"]["bill_card_status"]
         }
@@ -406,6 +409,38 @@ export type Database = {
           {
             foreignKeyName: "entity_parent_id_fkey"
             columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "entity"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      entity_config_status: {
+        Row: {
+          config_key: string
+          entity_id: string
+          id: string
+          status: Database["public"]["Enums"]["config_status"]
+          updated_at: string
+        }
+        Insert: {
+          config_key: string
+          entity_id: string
+          id?: string
+          status?: Database["public"]["Enums"]["config_status"]
+          updated_at?: string
+        }
+        Update: {
+          config_key?: string
+          entity_id?: string
+          id?: string
+          status?: Database["public"]["Enums"]["config_status"]
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "entity_config_status_entity_id_fkey"
+            columns: ["entity_id"]
             isOneToOne: false
             referencedRelation: "entity"
             referencedColumns: ["id"]
@@ -1103,7 +1138,8 @@ export type Database = {
           entity_id: string
           id: string
           markup_pct: number | null
-          risk_tier_id: string
+          risk_tier_id: string | null
+          service_type: Database["public"]["Enums"]["bill_card_service_type"]
           states: Json
           status: Database["public"]["Enums"]["bill_card_status"]
         }[]
@@ -1165,8 +1201,10 @@ export type Database = {
         | "eor_admin"
         | "worker"
       app_user_status: "active" | "inactive" | "invited"
+      bill_card_service_type: "eor" | "staffing" | "vms"
       bill_card_status: "draft" | "active"
       billing_model: "markup" | "bill_rate"
+      config_status: "not_started" | "completed" | "skipped"
       contact_kind: "signatory" | "primary"
       entity_kind: "client" | "tcw" | "eor" | "agency" | "vendor" | "msp"
       entity_service_source: "ai" | "manual"
@@ -1335,8 +1373,10 @@ export const Constants = {
         "worker",
       ],
       app_user_status: ["active", "inactive", "invited"],
+      bill_card_service_type: ["eor", "staffing", "vms"],
       bill_card_status: ["draft", "active"],
       billing_model: ["markup", "bill_rate"],
+      config_status: ["not_started", "completed", "skipped"],
       contact_kind: ["signatory", "primary"],
       entity_kind: ["client", "tcw", "eor", "agency", "vendor", "msp"],
       entity_service_source: ["ai", "manual"],

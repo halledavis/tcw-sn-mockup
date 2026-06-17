@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   SERVICES,
   COUNTRIES,
@@ -13,15 +13,16 @@ import {
 } from "@/lib/catalog";
 import { interviewAction, synthesizeAction, confirmIntakeAction, describeAction } from "./actions";
 import { saveScopeAndOrg, enableGlobalizedCompliance } from "@/app/clients/[id]/scope/actions";
-import {
-  categorizeJobTitle,
-  saveJobTitles,
-  deriveBillCards,
-  listRiskTiers,
-  saveBillCards,
-} from "@/app/clients/[id]/job-titles/actions";
+import { categorizeJobTitle, saveJobTitles } from "@/app/clients/[id]/job-titles/actions";
+import { setConfigStatus } from "@/app/clients/[id]/config/actions";
+import { enabledConfigPages } from "./config-pages";
 
-type Step = "persona" | "brief" | "qa" | "recs" | "builder" | "scope" | "jobtitles";
+// Base wizard pages are numbered 1–6 (persona is pre-create config); module-
+// gated config pages from the registry are appended after page 6, before the
+// summary. The step-indicator total is computed dynamically.
+const BASE_STEPS = 6;
+
+type Step = "persona" | "brief" | "qa" | "recs" | "builder" | "scope" | "jobtitles" | "config";
 
 const inp: React.CSSProperties = {
   width: "100%",
@@ -51,7 +52,6 @@ type TitleRow = {
   answerDraft: string;
   busy: boolean;
 };
-type CardRow = { id: string; risk_tier_id: string; markup_pct: number | null; states: string; status: "draft" | "active" };
 
 const newTitleRow = (title: string): TitleRow => ({
   title,
@@ -114,13 +114,18 @@ export default function NewClientWizard() {
   const [finishing, setFinishing] = useState(false);
   const [enabling, setEnabling] = useState(false);
 
-  // Page 6 — job types & bill cards
+  // Page 6 — job descriptions (titles + risk tiers). Bill cards now live on the
+  // EoR/Staffing config pages.
   const [titleRows, setTitleRows] = useState<TitleRow[]>([]);
   const [pasteText, setPasteText] = useState("");
-  const [cards, setCards] = useState<CardRow[]>([]);
-  const [tierById, setTierById] = useState<Record<string, { code: string; name: string }>>({});
-  const [generating, setGenerating] = useState(false);
   const [savingFinal, setSavingFinal] = useState(false);
+
+  // Module-gated config pages (after page 6): which ones are enabled, and where
+  // we are in the sequence.
+  const configPages = useMemo(() => enabledConfigPages(selected), [selected]);
+  const totalSteps = BASE_STEPS + configPages.length;
+  const [configIndex, setConfigIndex] = useState(0);
+  const [configBusy, setConfigBusy] = useState(false);
 
   const recommendedReasons = new Map<string, string>((recs ?? []).map((r) => [r.service_code, r.reason]));
 
@@ -403,50 +408,15 @@ export default function NewClientWizard() {
       needs_review: !r.tier,
       clarifications: r.clarifications,
     }));
-  const parseStates = (s: string) => {
-    const parts = s.split(",").map((x) => x.trim().toUpperCase()).filter(Boolean);
-    return parts.length ? parts : ["ALL"];
-  };
 
-  async function generateCards() {
+  // Page 6 "Finish": persist job titles, then hand off to the gated config
+  // pages (or straight to the summary if none are enabled).
+  async function finishJobDescriptions() {
     if (!entityId) return;
     setError("");
-    if (titleRows.length === 0) return setError("Add at least one job title.");
-    if (!titleRows.every((r) => r.confirmed)) return setError("Confirm every title before generating bill cards.");
-    setGenerating(true);
-    const saved = await saveJobTitles(entityId, titlePayload());
-    if (!saved.ok) {
-      setGenerating(false);
-      return setError(saved.error);
+    if (titleRows.length && !titleRows.every((r) => r.confirmed)) {
+      return setError("Confirm every title before continuing.");
     }
-    const [tiers, derived] = await Promise.all([listRiskTiers(), deriveBillCards(entityId)]);
-    setTierById(Object.fromEntries(tiers.map((t) => [t.id, { code: t.code, name: t.name }])));
-    if (!derived.ok) {
-      setGenerating(false);
-      return setError(derived.error);
-    }
-    setCards((prev) => {
-      const have = new Set(prev.map((c) => c.id));
-      const fresh: CardRow[] = derived.cards
-        .filter((c) => !have.has(c.id))
-        .map((c) => ({
-          id: c.id,
-          risk_tier_id: c.risk_tier_id,
-          markup_pct: c.markup_pct,
-          states: Array.isArray(c.states) ? (c.states as string[]).join(", ") : "ALL",
-          status: c.status as "draft" | "active",
-        }));
-      return [...prev, ...fresh];
-    });
-    setGenerating(false);
-  }
-
-  const patchCard = (i: number, patch: Partial<CardRow>) =>
-    setCards((prev) => prev.map((c, j) => (j === i ? { ...c, ...patch } : c)));
-
-  async function finishJobTitles() {
-    if (!entityId) return;
-    setError("");
     setSavingFinal(true);
     if (titleRows.length) {
       const sr = await saveJobTitles(entityId, titlePayload());
@@ -455,16 +425,24 @@ export default function NewClientWizard() {
         return setError(sr.error);
       }
     }
-    if (cards.length) {
-      const cr = await saveBillCards(
-        cards.map((c) => ({ id: c.id, markup_pct: c.markup_pct, states: parseStates(c.states), status: c.status })),
-      );
-      if (!cr.ok) {
-        setSavingFinal(false);
-        return setError(cr.error ?? "Save failed.");
-      }
-    }
-    router.push(`/clients/${entityId}`);
+    setSavingFinal(false);
+    if (configPages.length === 0) return router.push(`/clients/${entityId}`);
+    setConfigIndex(0);
+    setStep("config");
+  }
+
+  // --- Config-page flow (module-gated, registry-driven) ---
+  // Record the page's status, then advance to the next enabled page or the
+  // summary once the queue is exhausted.
+  async function resolveConfig(key: string, status: "completed" | "skipped") {
+    if (!entityId) return;
+    setError("");
+    setConfigBusy(true);
+    const res = await setConfigStatus({ entityId, configKey: key, status });
+    setConfigBusy(false);
+    if (!res.ok) return setError(res.error ?? "Save failed.");
+    if (configIndex + 1 >= configPages.length) return router.push(`/clients/${entityId}`);
+    setConfigIndex(configIndex + 1);
   }
 
   // Small reusable contact field group.
@@ -521,7 +499,7 @@ export default function NewClientWizard() {
         {/* Screen 2 — brief */}
         {step === "brief" && (
           <div className="panel">
-            <div className="steps">Step 1 of 6</div>
+            <div className="steps">Step 1 of {totalSteps}</div>
     <h2
       style={{
         textAlign: "center",
@@ -548,7 +526,7 @@ export default function NewClientWizard() {
         {/* Screen 3 — adaptive Q&A */}
         {step === "qa" && (
           <div className="panel">
-            <div className="steps">Step 2 of 6 · AI HR Consultant</div>
+            <div className="steps">Step 2 of {totalSteps} · AI HR Consultant</div>
             {transcript.map((t, i) => (
               <div key={i} className={`bubble ${t.role}`}>
                 {t.content}
@@ -575,7 +553,7 @@ export default function NewClientWizard() {
         {/* Screen 4 — services + modules */}
         {step === "recs" && (
           <div className="panel">
-            <div className="steps">Step 3 of 6 · Services</div>
+            <div className="steps">Step 3 of {totalSteps} · Services</div>
             {thinking && !recs && <p className="muted">Analyzing the conversation…</p>}
             {recs && (
               <>
@@ -625,7 +603,7 @@ export default function NewClientWizard() {
         {/* Screen 5 — client builder (page 4) */}
         {step === "builder" && (
           <div className="panel">
-            <div className="steps">Step 4 of 6 · Client Details</div>
+            <div className="steps">Step 4 of {totalSteps} · Client Details</div>
             <h2>Client Details</h2>
 
             <div style={{ marginTop: 8 }}>
@@ -710,7 +688,7 @@ export default function NewClientWizard() {
         {/* Screen 6 — operating scope & org structure (page 5) */}
         {step === "scope" && (
           <div className="panel">
-            <div className="steps">Step 5 of 6 · Operating Scope &amp; Org Structure</div>
+            <div className="steps">Step 5 of {totalSteps} · Operating Scope &amp; Org Structure</div>
             <h2>Operating Scope &amp; Org Structure</h2>
 
             {/* Section A — core physical locations */}
@@ -901,14 +879,14 @@ export default function NewClientWizard() {
           </div>
         )}
 
-        {/* Screen 7 — job types & bill cards (page 6) */}
+        {/* Screen 7 — job descriptions (page 6): titles + risk tiers only.
+            Bill cards moved to the EoR/Staffing config pages. */}
         {step === "jobtitles" && (
           <div className="panel">
-            <div className="steps">Step 6 of 6 · Job Types &amp; Bill Cards</div>
-            <h2>Job types &amp; bill cards</h2>
+            <div className="steps">Step 6 of {totalSteps} · Job Descriptions</div>
+            <h2>Job descriptions</h2>
 
-            {/* Section A — titles */}
-            <h3 style={{ marginTop: 16 }}>A. Job titles</h3>
+            <h3 style={{ marginTop: 16 }}>Job titles &amp; risk tiers</h3>
             <p className="muted small">
               Add the titles you&apos;ll staff (one per line), then let AI suggest a risk tier for each. You confirm
               every title before it&apos;s saved.
@@ -993,54 +971,61 @@ export default function NewClientWizard() {
               );
             })}
 
-            {/* Section B — bill cards */}
-            <h3 style={{ marginTop: 24 }}>B. Bill cards</h3>
-            <p className="muted small">
-              One draft card per risk tier present in your confirmed titles, seeded with the tier&apos;s default markup.
-              Bill rate = pay × (1 + markup) for EoR.
+            <p className="muted small" style={{ marginTop: 16 }}>
+              Bill cards (markups) are configured on the EoR / Staffing pages next.
             </p>
-            <button className="primary" disabled={generating} onClick={generateCards}>
-              {generating ? "Generating…" : "Generate bill cards"}
-            </button>
-
-            {cards.map((c, i) => (
-              <div key={c.id} className="rec" style={{ marginTop: 10 }}>
-                <div className="row">
-                  <strong style={{ flex: 1, marginTop: 20 }}>{tierById[c.risk_tier_id]?.name ?? "Tier"}</strong>
-                  <div style={{ flex: 1 }}>
-                    <label className="small muted">Markup %</label>
-                    <input
-                      style={inp}
-                      type="number"
-                      value={c.markup_pct ?? ""}
-                      onChange={(e) => patchCard(i, { markup_pct: e.target.value === "" ? null : Number(e.target.value) })}
-                    />
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <label className="small muted">States (comma, or ALL)</label>
-                    <input style={inp} value={c.states} onChange={(e) => patchCard(i, { states: e.target.value })} />
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <label className="small muted">Status</label>
-                    <select style={inp} value={c.status} onChange={(e) => patchCard(i, { status: e.target.value as "draft" | "active" })}>
-                      <option value="draft">draft</option>
-                      <option value="active">active</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-            ))}
 
             {error && <div className="err">{error}</div>}
 
             <div className="row" style={{ marginTop: 20 }}>
               <button onClick={() => setStep("scope")}>← Back</button>
-              <button className="primary" disabled={savingFinal} onClick={finishJobTitles}>
-                {savingFinal ? "Saving…" : "Finish →"}
+              <button className="primary" disabled={savingFinal} onClick={finishJobDescriptions}>
+                {savingFinal ? "Saving…" : "Continue →"}
               </button>
             </div>
           </div>
         )}
+
+        {/* Screens 7+ — module-gated config pages from the registry, in order.
+            Real components arrive later; placeholders keep the sequencing live. */}
+        {step === "config" && configPages[configIndex] && (() => {
+          const def = configPages[configIndex];
+          const Comp = def.component;
+          return (
+            <div className="panel">
+              <div className="steps">
+                Step {BASE_STEPS + configIndex + 1} of {totalSteps} · {def.label}
+              </div>
+              <Comp
+                entityId={entityId ?? ""}
+                busy={configBusy}
+                onComplete={() => resolveConfig(def.key, "completed")}
+                onSkip={() => resolveConfig(def.key, "skipped")}
+              />
+
+              {error && <div className="err">{error}</div>}
+
+              <div className="row" style={{ marginTop: 20 }}>
+                <button
+                  disabled={configBusy}
+                  onClick={() => (configIndex === 0 ? setStep("jobtitles") : setConfigIndex(configIndex - 1))}
+                >
+                  ← Back
+                </button>
+                <button disabled={configBusy} onClick={() => resolveConfig(def.key, "skipped")}>
+                  {configBusy ? "Saving…" : "Skip"}
+                </button>
+                <button className="primary" disabled={configBusy} onClick={() => resolveConfig(def.key, "completed")}>
+                  {configBusy
+                    ? "Saving…"
+                    : configIndex + 1 >= configPages.length
+                      ? "Finish →"
+                      : "Mark complete →"}
+                </button>
+              </div>
+            </div>
+          );
+        })()}
       </div>
     </>
   );

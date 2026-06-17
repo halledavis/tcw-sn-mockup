@@ -16,7 +16,14 @@ type LocationRow = {
 };
 type DeptRow = { name: string; internal_id: string | null };
 type JobTitleRow = { title: string; status: string; tier: { name: string } | null };
-type BillCardRow = { states: unknown; markup_pct: number | null; status: string; tier: { name: string } | null };
+type BillCardRow = { service_type: string; states: unknown; markup_pct: number | null; status: string; tier: { name: string } | null };
+type ConfigStatusRow = { config_key: string; status: string; updated_at: string };
+
+const CONFIG_STATUS_BADGE: Record<string, string> = {
+  not_started: "not started",
+  completed: "completed",
+  skipped: "skipped",
+};
 
 const ADDENDUM_BADGE: Record<string, string> = {
   not_applicable: "n/a",
@@ -53,6 +60,7 @@ export default async function ClientSummary({ params }: { params: Promise<{ id: 
     { data: deptData },
     { data: titleData },
     { data: cardData },
+    { data: configData },
   ] = await Promise.all([
     supabase.from("entity_service").select("status, source, service:service_id(code, name)").eq("entity_id", id),
     supabase.from("entity_module").select("enabled, source, module:module_id(code, name)").eq("entity_id", id),
@@ -62,7 +70,8 @@ export default async function ClientSummary({ params }: { params: Promise<{ id: 
     supabase.from("location").select("name, street, city, state, country, postal, internal_id, is_primary").eq("entity_id", id),
     supabase.from("department").select("name, internal_id").eq("entity_id", id).order("name"),
     supabase.from("client_job_title").select("title, status, tier:risk_tier_id(name)").eq("entity_id", id).order("title"),
-    supabase.from("bill_card").select("states, markup_pct, status, tier:risk_tier_id(name)").eq("entity_id", id),
+    supabase.from("bill_card").select("service_type, states, markup_pct, status, tier:risk_tier_id(name)").eq("entity_id", id),
+    supabase.from("entity_config_status").select("config_key, status, updated_at").eq("entity_id", id).order("config_key"),
   ]);
 
   const services = (svcData ?? []) as unknown as ServiceRow[];
@@ -74,6 +83,7 @@ export default async function ClientSummary({ params }: { params: Promise<{ id: 
   const departments = (deptData ?? []) as unknown as DeptRow[];
   const jobTitles = (titleData ?? []) as unknown as JobTitleRow[];
   const billCards = (cardData ?? []) as unknown as BillCardRow[];
+  const configStatuses = (configData ?? []) as unknown as ConfigStatusRow[];
   const addr = (entity.address ?? null) as Address;
   const addrLine = addr
     ? [addr.street, addr.city, addr.state, addr.zip, addr.country].filter(Boolean).join(", ")
@@ -241,12 +251,27 @@ export default async function ClientSummary({ params }: { params: Promise<{ id: 
           {billCards.map((c, i) => (
             <div key={i} className="spread" style={{ padding: "6px 0", borderBottom: "1px solid var(--line)" }}>
               <span>
-                {c.tier?.name ?? "—"}{" "}
+                <span className="pill">{c.service_type}</span> {c.tier?.name ?? "no tier"}{" "}
                 <span className="muted small">{Array.isArray(c.states) ? (c.states as string[]).join(", ") : "ALL"}</span>
               </span>
               <span className="small muted">
                 {c.markup_pct != null ? `${c.markup_pct}%` : "—"}{" "}
                 <span className={`pill ${c.status === "active" ? "on" : ""}`}>{c.status}</span>
+              </span>
+            </div>
+          ))}
+        </div>
+
+        <div className="panel">
+          <h2>Config-page progress</h2>
+          {configStatuses.length === 0 && <p className="muted">No config pages recorded yet.</p>}
+          {configStatuses.map((c, i) => (
+            <div key={i} className="spread" style={{ padding: "6px 0", borderBottom: "1px solid var(--line)" }}>
+              <span>{c.config_key}</span>
+              <span className="small muted">
+                <span className={`pill ${c.status === "completed" ? "on" : ""}`}>
+                  {CONFIG_STATUS_BADGE[c.status] ?? c.status}
+                </span>
               </span>
             </div>
           ))}
