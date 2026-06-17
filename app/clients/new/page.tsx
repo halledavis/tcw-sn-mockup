@@ -17,6 +17,18 @@ import { saveScopeAndOrg, enableGlobalizedCompliance } from "@/app/clients/[id]/
 import { categorizeJobTitle, saveJobTitles } from "@/app/clients/[id]/job-titles/actions";
 import { setConfigStatus } from "@/app/clients/[id]/config/actions";
 import { enabledConfigPages } from "./config-pages";
+import CommentaryBubble from "@/components/CommentaryBubble";
+
+// Maps each wizard step to its director's-commentary note key.
+const COMMENTARY_KEYS: Record<string, string> = {
+  persona: "client.persona",
+  brief: "client.brief",
+  qa: "client.qa",
+  recs: "client.recs",
+  builder: "client.profile",
+  scope: "client.scope",
+  jobtitles: "client.jds",
+};
 
 // Base wizard pages are numbered 1–6 (persona is pre-create config); module-
 // gated config pages from the registry are appended after page 6, before the
@@ -1018,6 +1030,13 @@ export default function NewClientWizard() {
           </Link>
         </div>
       </div>
+      <CommentaryBubble
+        noteKey={
+          step === "config"
+            ? `client.config.${configPages[configIndex]?.key ?? "eor"}`
+            : COMMENTARY_KEYS[step] ?? ""
+        }
+      />
     </>
   );
 }

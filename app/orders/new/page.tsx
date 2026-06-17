@@ -17,6 +17,7 @@ import {
   type OrderLocation,
 } from "./actions";
 import WorldMap from "./WorldMap";
+import CommentaryBubble from "@/components/CommentaryBubble";
 
 type OrderPersona = "eor" | "vms" | "staffing" | "agent" | "1099s";
 type Fulfillment = "agent" | "worker" | "project";
@@ -656,6 +657,7 @@ export default function NewOrder() {
           </Link>
         </div>
       </div>
+      <CommentaryBubble noteKey={`order.${current.key === "flow" ? "review" : current.key}`} />
     </>
   );
 }
