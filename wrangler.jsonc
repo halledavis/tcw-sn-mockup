@@ -2,7 +2,7 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "main": ".open-next/worker.js",
   "name": "tcw-sn-mockup",
-  "compatibility_date": "2026-06-16",
+  "compatibility_date": "2026-06-17",
   "compatibility_flags": [
     "nodejs_compat"
   ],
