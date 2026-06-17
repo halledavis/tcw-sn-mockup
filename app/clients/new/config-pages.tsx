@@ -289,35 +289,54 @@ function StaffingConfig(props: ConfigPageProps) {
   );
 }
 
-// --- Placeholder pages (international / vms) come in later prompts -----------
-function placeholder(label: string) {
-  return function Placeholder(props: ConfigPageProps) {
-    return (
-      <>
-        <h2>{label}</h2>
-        <div className="panel mock" style={{ marginTop: 8 }}>
-          <p className="small" style={{ marginTop: 0 }}>
-            Placeholder — the {label.toLowerCase()} step isn&apos;t built yet. The wizard reaches it because the gating
-            service is enabled; the real configuration UI lands in a later prompt.
-          </p>
-        </div>
-        <ConfigNav
-          isLast={props.isLast}
-          busy={props.busy}
-          onBack={props.onBack}
-          onSkip={props.onSkip}
-          onComplete={props.onComplete}
-        />
-      </>
-    );
-  };
+// --- International config page (gated placeholder) --------------------------
+// Gated on globalized_compliance; body intentionally blank for now.
+function InternationalConfig(props: ConfigPageProps) {
+  return (
+    <>
+      <h2>International configuration</h2>
+      <div className="panel mock" style={{ marginTop: 8 }}>
+        <p className="small" style={{ marginTop: 0 }}>Configuration coming soon.</p>
+      </div>
+      <ConfigNav
+        isLast={props.isLast}
+        busy={props.busy}
+        onBack={props.onBack}
+        onSkip={props.onSkip}
+        onComplete={props.onComplete}
+      />
+    </>
+  );
+}
+
+// --- VMS / MSP config page (gated placeholder) ------------------------------
+// The real VMS build (standardized bill rate, vendor-neutral, managed
+// internally/externally, agency/vendor groups, tiered order release, vetting,
+// and the billing-model setting that decides whether VMS rate cards are
+// created) is its own session.
+function VmsConfig(props: ConfigPageProps) {
+  return (
+    <>
+      <h2>VMS / MSP configuration</h2>
+      <div className="panel mock" style={{ marginTop: 8 }}>
+        <p className="small" style={{ marginTop: 0 }}>Full VMS settings are coming in a later build.</p>
+      </div>
+      <ConfigNav
+        isLast={props.isLast}
+        busy={props.busy}
+        onBack={props.onBack}
+        onSkip={props.onSkip}
+        onComplete={props.onComplete}
+      />
+    </>
+  );
 }
 
 export const CONFIG_PAGES: ConfigPageDef[] = [
   { key: "eor", label: "EoR configuration", gateService: "eor", order: 10, component: EorConfig },
   { key: "staffing", label: "Staffing configuration", gateService: "staffing", order: 20, component: StaffingConfig },
-  { key: "international", label: "International configuration", gateService: "globalized_compliance", order: 30, component: placeholder("International configuration") },
-  { key: "vms", label: "VMS / MSP configuration", gateService: "vms", order: 40, component: placeholder("VMS / MSP configuration") },
+  { key: "international", label: "International configuration", gateService: "globalized_compliance", order: 30, component: InternationalConfig },
+  { key: "vms", label: "VMS / MSP configuration", gateService: "vms", order: 40, component: VmsConfig },
 ];
 
 // The ordered config pages whose gating service is enabled for this client.

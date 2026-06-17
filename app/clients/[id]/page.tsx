@@ -25,6 +25,21 @@ const CONFIG_STATUS_BADGE: Record<string, string> = {
   skipped: "skipped",
 };
 
+// Bill cards are grouped under these service_type sections, in this order.
+const BILL_CARD_GROUPS: { key: string; label: string }[] = [
+  { key: "eor", label: "EOR" },
+  { key: "staffing", label: "Staffing" },
+  { key: "vms", label: "VMS" },
+];
+
+// Friendly labels for the config-page progress panel (keys mirror the registry).
+const CONFIG_KEY_LABEL: Record<string, string> = {
+  eor: "EoR configuration",
+  staffing: "Staffing configuration",
+  international: "International configuration",
+  vms: "VMS / MSP configuration",
+};
+
 const ADDENDUM_BADGE: Record<string, string> = {
   not_applicable: "n/a",
   pending: "addendum pending",
@@ -248,26 +263,36 @@ export default async function ClientSummary({ params }: { params: Promise<{ id: 
         <div className="panel">
           <h2>Bill cards</h2>
           {billCards.length === 0 && <p className="muted">None.</p>}
-          {billCards.map((c, i) => (
-            <div key={i} className="spread" style={{ padding: "6px 0", borderBottom: "1px solid var(--line)" }}>
-              <span>
-                <span className="pill">{c.service_type}</span> {c.tier?.name ?? "no tier"}{" "}
-                <span className="muted small">{Array.isArray(c.states) ? (c.states as string[]).join(", ") : "ALL"}</span>
-              </span>
-              <span className="small muted">
-                {c.markup_pct != null ? `${c.markup_pct}%` : "—"}{" "}
-                <span className={`pill ${c.status === "active" ? "on" : ""}`}>{c.status}</span>
-              </span>
-            </div>
-          ))}
+          {BILL_CARD_GROUPS.map((g) => {
+            const group = billCards.filter((c) => c.service_type === g.key);
+            if (group.length === 0) return null;
+            return (
+              <div key={g.key} style={{ marginTop: 8 }}>
+                <h3 className="small muted" style={{ marginBottom: 4 }}>{g.label}</h3>
+                {group.map((c, i) => (
+                  <div key={i} className="spread" style={{ padding: "6px 0", borderBottom: "1px solid var(--line)" }}>
+                    <span>
+                      {c.tier?.name ?? "no tier"}{" "}
+                      <span className="muted small">{Array.isArray(c.states) ? (c.states as string[]).join(", ") : "ALL"}</span>
+                    </span>
+                    <span className="small muted">
+                      {c.markup_pct != null ? `${c.markup_pct}%` : "—"}{" "}
+                      <span className={`pill ${c.status === "active" ? "on" : ""}`}>{c.status}</span>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            );
+          })}
         </div>
 
         <div className="panel">
           <h2>Config-page progress</h2>
+          <p className="muted small" style={{ marginTop: 0 }}>Only the pages that applied to this client&apos;s services.</p>
           {configStatuses.length === 0 && <p className="muted">No config pages recorded yet.</p>}
           {configStatuses.map((c, i) => (
             <div key={i} className="spread" style={{ padding: "6px 0", borderBottom: "1px solid var(--line)" }}>
-              <span>{c.config_key}</span>
+              <span>{CONFIG_KEY_LABEL[c.config_key] ?? c.config_key}</span>
               <span className="small muted">
                 <span className={`pill ${c.status === "completed" ? "on" : ""}`}>
                   {CONFIG_STATUS_BADGE[c.status] ?? c.status}
