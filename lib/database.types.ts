@@ -797,6 +797,7 @@ export type Database = {
           location: string | null
           markup_pct: number | null
           num_workers: number
+          reporting_location_id: string | null
           source_type: Database["public"]["Enums"]["source_type"]
           sow_ref: string | null
           start_date: string | null
@@ -804,6 +805,9 @@ export type Database = {
           sub_entity_id: string | null
           submitted_by: string | null
           weekly_hours: number | null
+          work_arrangement:
+            | Database["public"]["Enums"]["work_arrangement"]
+            | null
         }
         Insert: {
           bill_rate?: number | null
@@ -828,6 +832,7 @@ export type Database = {
           location?: string | null
           markup_pct?: number | null
           num_workers?: number
+          reporting_location_id?: string | null
           source_type: Database["public"]["Enums"]["source_type"]
           sow_ref?: string | null
           start_date?: string | null
@@ -835,6 +840,9 @@ export type Database = {
           sub_entity_id?: string | null
           submitted_by?: string | null
           weekly_hours?: number | null
+          work_arrangement?:
+            | Database["public"]["Enums"]["work_arrangement"]
+            | null
         }
         Update: {
           bill_rate?: number | null
@@ -859,6 +867,7 @@ export type Database = {
           location?: string | null
           markup_pct?: number | null
           num_workers?: number
+          reporting_location_id?: string | null
           source_type?: Database["public"]["Enums"]["source_type"]
           sow_ref?: string | null
           start_date?: string | null
@@ -866,6 +875,9 @@ export type Database = {
           sub_entity_id?: string | null
           submitted_by?: string | null
           weekly_hours?: number | null
+          work_arrangement?:
+            | Database["public"]["Enums"]["work_arrangement"]
+            | null
         }
         Relationships: [
           {
@@ -901,6 +913,13 @@ export type Database = {
             columns: ["jd_id"]
             isOneToOne: false
             referencedRelation: "jd"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "job_order_reporting_location_id_fkey"
+            columns: ["reporting_location_id"]
+            isOneToOne: false
+            referencedRelation: "location"
             referencedColumns: ["id"]
           },
           {
@@ -1282,6 +1301,7 @@ export type Database = {
         | "order"
       source_type: "self_sourced" | "externally_sourced" | "outside_sn"
       subdivision_type: "state" | "province"
+      work_arrangement: "onsite" | "remote" | "hybrid" | "open"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1466,6 +1486,7 @@ export const Constants = {
       ],
       source_type: ["self_sourced", "externally_sourced", "outside_sn"],
       subdivision_type: ["state", "province"],
+      work_arrangement: ["onsite", "remote", "hybrid", "open"],
     },
   },
 } as const

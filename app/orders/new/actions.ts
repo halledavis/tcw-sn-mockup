@@ -65,6 +65,49 @@ export async function listClientJobTitles(entityId: string): Promise<ClientTitle
   }
 }
 
+// --- Location step: client's definite offices + in-scope countries (map) ---
+export type OrderLocation = {
+  id: string;
+  name: string | null;
+  city: string | null;
+  state: string | null;
+  country: string | null;
+  is_primary: boolean;
+};
+
+export async function listClientLocations(entityId: string): Promise<OrderLocation[]> {
+  if (!z.string().uuid().safeParse(entityId).success) return [];
+  try {
+    const supabase = supabaseAdmin();
+    const { data, error } = await supabase
+      .from("location")
+      .select("id, name, city, state, country, is_primary")
+      .eq("entity_id", entityId)
+      .order("is_primary", { ascending: false });
+    if (error) return [];
+    return (data ?? []) as OrderLocation[];
+  } catch (e) {
+    console.error("listClientLocations failed:", e);
+    return [];
+  }
+}
+
+export async function listClientScopeCountries(entityId: string): Promise<string[]> {
+  if (!z.string().uuid().safeParse(entityId).success) return [];
+  try {
+    const supabase = supabaseAdmin();
+    const { data, error } = await supabase
+      .from("client_country_scope")
+      .select("country_code")
+      .eq("entity_id", entityId);
+    if (error) return [];
+    return (data ?? []).map((r) => r.country_code);
+  } catch (e) {
+    console.error("listClientScopeCountries failed:", e);
+    return [];
+  }
+}
+
 // --- Mappings: wizard selections -> the existing flow_type/source_type pair ---
 // flow_type: agent is a placeholder ('worker') until agent modeling exists.
 function toFlowType(fulfillment: "agent" | "worker" | "project"): FlowType {
@@ -161,6 +204,9 @@ const updateSchema = z.object({
   durationUnit: z.enum(["days", "weeks", "months", "years"]).nullable().optional(),
   startDate: z.string().nullable().optional(),
   endDate: z.string().nullable().optional(),
+  // location details
+  workArrangement: z.enum(["onsite", "remote", "hybrid", "open"]).nullable().optional(),
+  reportingLocationId: z.string().uuid().nullable().optional(),
 });
 export type UpdateOrderPayload = z.input<typeof updateSchema>;
 
@@ -191,6 +237,8 @@ export async function updateDraftOrder(id: string, input: UpdateOrderPayload): P
     if (p.durationUnit !== undefined) patch.duration_unit = p.durationUnit;
     if (p.startDate !== undefined) patch.start_date = p.startDate;
     if (p.endDate !== undefined) patch.end_date = p.endDate;
+    if (p.workArrangement !== undefined) patch.work_arrangement = p.workArrangement;
+    if (p.reportingLocationId !== undefined) patch.reporting_location_id = p.reportingLocationId;
     if (Object.keys(patch).length === 0) return { ok: true };
     const { error } = await supabase.from("job_order").update(patch).eq("id", idCheck.data);
     if (error) return { ok: false, error: error.message };

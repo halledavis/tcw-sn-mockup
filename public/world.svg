@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 180" preserveAspectRatio="none" role="img" aria-label="World map">
+  <rect width="360" height="180" fill="#eef2f6"/>
+  <!-- Coarse equirectangular continent silhouettes (cosmetic). x = lon+180, y = 90-lat. -->
+  <g fill="#cfd8e3" stroke="#b6c2d1" stroke-width="0.4" stroke-linejoin="round">
+    <polygon points="15,22 85,20 120,30 125,43 100,65 83,74 75,67 63,58 55,50 40,32"/>
+    <polygon points="100,82 120,85 130,90 145,98 132,115 115,135 107,142 110,120 102,100"/>
+    <polygon points="165,60 190,55 213,58 225,78 230,95 215,122 200,125 192,108 188,86 170,80"/>
+    <polygon points="170,47 180,39 190,36 210,30 220,22 205,20 185,30 175,38"/>
+    <polygon points="220,22 240,18 280,15 320,18 350,24 360,30 325,45 300,55 302,68 285,80 275,82 258,82 240,65 225,50"/>
+    <polygon points="293,102 315,102 330,115 326,128 310,122 295,125 293,112"/>
+  </g>
+  <!-- faint graticule -->
+  <g stroke="#dbe3ec" stroke-width="0.3" fill="none">
+    <line x1="0" y1="90" x2="360" y2="90"/>
+    <line x1="180" y1="0" x2="180" y2="180"/>
+  </g>
+</svg>

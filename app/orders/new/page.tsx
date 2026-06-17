@@ -8,10 +8,14 @@ import {
   listOrderClients,
   listClientDepartments,
   listClientJobTitles,
+  listClientLocations,
+  listClientScopeCountries,
   type OrderClient,
   type DepartmentRow,
   type ClientTitleRow,
+  type OrderLocation,
 } from "./actions";
+import WorldMap from "./WorldMap";
 
 type OrderPersona = "eor" | "vms" | "staffing" | "agent" | "1099s";
 type Fulfillment = "agent" | "worker" | "project";
@@ -71,6 +75,7 @@ const STEPS: { key: string; label: string; isActive: (s: FlowState) => boolean }
   { key: "fulfillment", label: "Work Fulfillment Strategy", isActive: (s) => !!s.persona && fulfillmentsFor(s.persona).length > 1 },
   { key: "source", label: "Fill Source Strategy", isActive: (s) => effectiveFulfillment(s) === "worker" },
   { key: "engagement", label: "Engagement details", isActive: (s) => effectiveFulfillment(s) === "worker" },
+  { key: "location", label: "Location details", isActive: (s) => effectiveFulfillment(s) === "worker" },
   { key: "flow", label: "Order Intake flow", isActive: () => true },
 ];
 
@@ -124,6 +129,14 @@ export default function NewOrder() {
   const [savingEngagement, setSavingEngagement] = useState(false);
   const [engagementError, setEngagementError] = useState("");
 
+  // Location-details step.
+  const [locations, setLocations] = useState<OrderLocation[]>([]);
+  const [scopeCountries, setScopeCountries] = useState<string[]>([]);
+  const [workArrangement, setWorkArrangement] = useState<"onsite" | "remote" | "hybrid" | "open" | "">("");
+  const [reportingLocationId, setReportingLocationId] = useState("");
+  const [savingLocation, setSavingLocation] = useState(false);
+  const [locationError, setLocationError] = useState("");
+
   const state: FlowState = { persona, fulfillment };
   const visible = STEPS.filter((s) => s.isActive(state));
   const idx = Math.min(stepIndex, visible.length - 1);
@@ -133,15 +146,19 @@ export default function NewOrder() {
     listOrderClients().then(setClients);
   }, []);
 
-  // Load the selected client's departments + job titles for the engagement step.
+  // Load the selected client's departments / job titles / locations / scope.
   useEffect(() => {
     if (!clientId) {
       setDepartments([]);
       setTitles([]);
+      setLocations([]);
+      setScopeCountries([]);
       return;
     }
     listClientDepartments(clientId).then(setDepartments);
     listClientJobTitles(clientId).then(setTitles);
+    listClientLocations(clientId).then(setLocations);
+    listClientScopeCountries(clientId).then(setScopeCountries);
   }, [clientId]);
 
   // Persist a draft order once, as soon as the flow reaches the first post-
@@ -191,6 +208,23 @@ export default function NewOrder() {
     });
     setSavingEngagement(false);
     if (!res.ok) return setEngagementError(res.error ?? "Save failed.");
+    goNext();
+  }
+
+  // "Open to anything" only when the candidate isn't already known.
+  const candidateKnown = source === "self_known";
+  const locationValid = !!workArrangement && !!reportingLocationId;
+
+  async function saveLocation() {
+    if (!draftId || !workArrangement) return;
+    setLocationError("");
+    setSavingLocation(true);
+    const res = await updateDraftOrder(draftId, {
+      workArrangement,
+      reportingLocationId: reportingLocationId || null,
+    });
+    setSavingLocation(false);
+    if (!res.ok) return setLocationError(res.error ?? "Save failed.");
     goNext();
   }
 
@@ -398,7 +432,54 @@ export default function NewOrder() {
           </div>
         )}
 
-        {/* Screen 5 — order flow */}
+        {/* Screen 5 — location details (worker requisitions only) */}
+        {current.key === "location" && (
+          <div className="panel">
+            <div className="steps">Step {idx}</div>
+            <h2>Location details</h2>
+
+            <WorldMap locations={locations} scopeCountries={scopeCountries} />
+
+            <div style={{ marginTop: 16 }}>
+              <label className="small muted">Work arrangement *</label>
+              <div className="row" style={{ marginTop: 4, flexWrap: "wrap" }}>
+                <label className="small"><input type="radio" name="work" checked={workArrangement === "onsite"} onChange={() => setWorkArrangement("onsite")} /> Onsite</label>
+                <label className="small"><input type="radio" name="work" checked={workArrangement === "remote"} onChange={() => setWorkArrangement("remote")} /> Remote</label>
+                <label className="small"><input type="radio" name="work" checked={workArrangement === "hybrid"} onChange={() => setWorkArrangement("hybrid")} /> Hybrid</label>
+                {!candidateKnown && (
+                  <label className="small"><input type="radio" name="work" checked={workArrangement === "open"} onChange={() => setWorkArrangement("open")} /> Open to anything</label>
+                )}
+              </div>
+            </div>
+
+            <div style={{ marginTop: 16 }}>
+              <label className="small muted">Reporting location *</label>
+              <select style={inp} value={reportingLocationId} onChange={(e) => setReportingLocationId(e.target.value)}>
+                <option value="">Select a location…</option>
+                {locations.map((l) => (
+                  <option key={l.id} value={l.id}>
+                    {(l.name || l.city || l.country || "Location") + (l.is_primary ? " (primary)" : "")}
+                  </option>
+                ))}
+              </select>
+              {locations.length === 0 && (
+                <div className="muted small" style={{ marginTop: 4 }}>
+                  This client has no locations yet — add them in the client builder first.
+                </div>
+              )}
+            </div>
+
+            {locationError && <div className="err">{locationError}</div>}
+            <div className="row" style={{ marginTop: 16 }}>
+              <button onClick={goBack}>← Back</button>
+              <button className="primary" disabled={!locationValid || savingLocation || !draftId} onClick={saveLocation}>
+                {savingLocation ? "Saving…" : "Continue →"}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Screen 6 — order flow */}
         {current.key === "flow" && (
           <div className="panel">
             <h2>Order Intake flow</h2>
