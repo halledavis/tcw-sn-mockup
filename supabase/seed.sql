@@ -97,3 +97,96 @@ insert into public.bill_rate_rule (id, scope_level, scope_ref, entity_id, when_c
   (gen_random_uuid(), 'client', 'a0000000-0000-0000-0000-000000000004', 'a0000000-0000-0000-0000-000000000004', null,                                                  'markup',    50.00, null,  10),
   (gen_random_uuid(), 'jd',     'c0000000-0000-0000-0000-000000000003', 'a0000000-0000-0000-0000-000000000006', null,                                                  'bill_rate', null,  95.00, 20),
   (gen_random_uuid(), 'order',  'd0000000-0000-0000-0000-000000000001', null,                                   '{"job_category":"Welder","state":"TX"}'::jsonb,       'bill_rate', null,  80.00, 30);
+
+-- ============================================================================
+-- DEMO DATA for the order-intake flow (departments / locations / scope / job
+-- titles) on the three billable-entity clients. IDEMPOTENT — safe to re-run:
+-- natural-key ON CONFLICT where a unique exists, WHERE NOT EXISTS otherwise.
+-- Clients: A=Initech LLC (...004, US multi-state), B=Hooli Corp (...006, incl.
+-- London UK), C=Initech West LLC (...005, incl. Toronto ON).
+-- ============================================================================
+
+-- Departments — unique(entity_id, name)
+insert into public.department (entity_id, name) values
+  ('a0000000-0000-0000-0000-000000000004', 'Engineering'),
+  ('a0000000-0000-0000-0000-000000000004', 'Operations'),
+  ('a0000000-0000-0000-0000-000000000004', 'Sales'),
+  ('a0000000-0000-0000-0000-000000000004', 'Marketing'),
+  ('a0000000-0000-0000-0000-000000000006', 'Engineering'),
+  ('a0000000-0000-0000-0000-000000000006', 'Product'),
+  ('a0000000-0000-0000-0000-000000000006', 'Data Science'),
+  ('a0000000-0000-0000-0000-000000000005', 'Field Services'),
+  ('a0000000-0000-0000-0000-000000000005', 'Operations'),
+  ('a0000000-0000-0000-0000-000000000005', 'Logistics')
+on conflict (entity_id, name) do nothing;
+
+-- Locations — no unique constraint, guard on (entity_id, name)
+insert into public.location (entity_id, name, city, state, country, is_primary)
+select v.entity_id, v.name, v.city, v.state, v.country, v.is_primary
+from (values
+  -- A: Initech LLC — US multi-state
+  ('a0000000-0000-0000-0000-000000000004'::uuid, 'Austin HQ',     'Austin',    'TX', 'US', true),
+  ('a0000000-0000-0000-0000-000000000004'::uuid, 'Denver Office', 'Denver',    'CO', 'US', false),
+  ('a0000000-0000-0000-0000-000000000004'::uuid, 'Chicago Office','Chicago',   'IL', 'US', false),
+  -- B: Hooli Corp — US + non-US (London, UK)
+  ('a0000000-0000-0000-0000-000000000006'::uuid, 'Palo Alto HQ',  'Palo Alto', 'CA', 'US', true),
+  ('a0000000-0000-0000-0000-000000000006'::uuid, 'NYC Office',    'New York',  'NY', 'US', false),
+  ('a0000000-0000-0000-0000-000000000006'::uuid, 'London Office', 'London',    null, 'GB', false),
+  -- C: Initech West LLC — US + Canadian province (Toronto, ON)
+  ('a0000000-0000-0000-0000-000000000005'::uuid, 'Phoenix HQ',    'Phoenix',   'AZ', 'US', true),
+  ('a0000000-0000-0000-0000-000000000005'::uuid, 'Seattle Office','Seattle',   'WA', 'US', false),
+  ('a0000000-0000-0000-0000-000000000005'::uuid, 'Toronto Office','Toronto',   'ON', 'CA', false)
+) as v(entity_id, name, city, state, country, is_primary)
+where not exists (
+  select 1 from public.location l where l.entity_id = v.entity_id and l.name = v.name
+);
+
+-- In-scope countries — unique(entity_id, country_code)
+insert into public.client_country_scope (entity_id, country_code, addendum_status) values
+  ('a0000000-0000-0000-0000-000000000004', 'US', 'not_applicable'),
+  ('a0000000-0000-0000-0000-000000000006', 'US', 'not_applicable'),
+  ('a0000000-0000-0000-0000-000000000006', 'GB', 'pending'),
+  ('a0000000-0000-0000-0000-000000000005', 'US', 'not_applicable'),
+  ('a0000000-0000-0000-0000-000000000005', 'CA', 'pending')
+on conflict (entity_id, country_code) do nothing;
+
+-- In-scope subdivisions — unique(entity_id, country_code, subdivision_code)
+insert into public.client_subdivision_scope (entity_id, country_code, subdivision_code, subdivision_type) values
+  ('a0000000-0000-0000-0000-000000000004', 'US', 'TX', 'state'),
+  ('a0000000-0000-0000-0000-000000000004', 'US', 'CO', 'state'),
+  ('a0000000-0000-0000-0000-000000000004', 'US', 'IL', 'state'),
+  ('a0000000-0000-0000-0000-000000000006', 'US', 'CA', 'state'),
+  ('a0000000-0000-0000-0000-000000000006', 'US', 'NY', 'state'),
+  ('a0000000-0000-0000-0000-000000000005', 'US', 'AZ', 'state'),
+  ('a0000000-0000-0000-0000-000000000005', 'US', 'WA', 'state'),
+  ('a0000000-0000-0000-0000-000000000005', 'CA', 'ON', 'province')
+on conflict (entity_id, country_code, subdivision_code) do nothing;
+
+-- Job titles — no unique constraint, guard on (entity_id, title). risk_tier_id
+-- assigned across a mix of seeded tiers via code lookup.
+insert into public.client_job_title (entity_id, title, risk_tier_id, status, needs_review)
+select v.entity_id, v.title, (select id from public.risk_tier where code = v.tier), 'confirmed', false
+from (values
+  -- A: Initech LLC — software / tech
+  ('a0000000-0000-0000-0000-000000000004'::uuid, 'Software Engineer', 'tier_0'),
+  ('a0000000-0000-0000-0000-000000000004'::uuid, 'Account Manager',   'tier_0'),
+  ('a0000000-0000-0000-0000-000000000004'::uuid, 'Field Technician',  'tier_1'),
+  ('a0000000-0000-0000-0000-000000000004'::uuid, 'Lab Technician',    'tier_2'),
+  ('a0000000-0000-0000-0000-000000000004'::uuid, 'Delivery Driver',   'tier_3'),
+  -- B: Hooli Corp — search / data
+  ('a0000000-0000-0000-0000-000000000006'::uuid, 'Software Engineer', 'tier_0'),
+  ('a0000000-0000-0000-0000-000000000006'::uuid, 'Data Scientist',    'tier_0'),
+  ('a0000000-0000-0000-0000-000000000006'::uuid, 'Product Manager',   'tier_0'),
+  ('a0000000-0000-0000-0000-000000000006'::uuid, 'Field Technician',  'tier_1'),
+  ('a0000000-0000-0000-0000-000000000006'::uuid, 'Warehouse Associate','tier_2'),
+  -- C: Initech West LLC — field services / industrial
+  ('a0000000-0000-0000-0000-000000000005'::uuid, 'Operations Coordinator', 'tier_0'),
+  ('a0000000-0000-0000-0000-000000000005'::uuid, 'Field Technician',       'tier_1'),
+  ('a0000000-0000-0000-0000-000000000005'::uuid, 'Warehouse Associate',    'tier_2'),
+  ('a0000000-0000-0000-0000-000000000005'::uuid, 'Lab Technician',         'tier_2'),
+  ('a0000000-0000-0000-0000-000000000005'::uuid, 'Forklift Operator',      'tier_3'),
+  ('a0000000-0000-0000-0000-000000000005'::uuid, 'Delivery Driver',        'tier_3')
+) as v(entity_id, title, tier)
+where not exists (
+  select 1 from public.client_job_title c where c.entity_id = v.entity_id and c.title = v.title
+);
