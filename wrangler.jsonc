@@ -6,6 +6,16 @@
   "compatibility_flags": [
     "nodejs_compat"
   ],
+  // Non-secret env exposed to the Worker at runtime (OpenNext populates
+  // process.env from these). The two SECRETS — SUPABASE_SERVICE_ROLE_KEY and
+  // OPENAI_API_KEY — are intentionally NOT here; set them with
+  // `wrangler secret put <NAME>` (or the Cloudflare dashboard) so they never
+  // land in the repo. Locally: next dev reads .env.local; wrangler dev /
+  // opennextjs-cloudflare preview read .dev.vars.
+  "vars": {
+    "NEXT_PUBLIC_SUPABASE_URL": "https://dsvtqjnjdxvvjvrgvgep.supabase.co",
+    "OPENAI_MODEL": "gpt-4o-mini"
+  },
   "assets": {
     "directory": ".open-next/assets",
     "binding": "ASSETS"
