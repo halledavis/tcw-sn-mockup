@@ -203,7 +203,6 @@ function BillCardsSection({
 
 // --- EoR config page --------------------------------------------------------
 function EorConfig(props: ConfigPageProps) {
-  const bc = useBillCards(props.entityId, "eor");
   const [exclusive, setExclusive] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -211,10 +210,6 @@ function EorConfig(props: ConfigPageProps) {
   async function complete() {
     setSaving(true);
     setError("");
-    if (!(await bc.save())) {
-      setSaving(false);
-      return setError(bc.error || "Save failed.");
-    }
     const r = await setEorExclusive({ entityId: props.entityId, exclusive });
     setSaving(false);
     if (!r.ok) return setError(r.error ?? "Save failed.");
@@ -226,10 +221,7 @@ function EorConfig(props: ConfigPageProps) {
     <>
       <h2>Employer of Record configuration</h2>
 
-      <h3 style={{ marginTop: 16 }}>Bill cards</h3>
-      <BillCardsSection bc={bc} serviceLabel="eor" />
-
-      <h3 style={{ marginTop: 24 }}>Payroll employer</h3>
+      <h3 style={{ marginTop: 16 }}>Payroll employer</h3>
       <label className="small" style={{ display: "block", marginTop: 6 }}>
         <input type="checkbox" checked={exclusive} onChange={(e) => setExclusive(e.target.checked)} /> TargetCW exclusive
         for payroll
